@@ -1,6 +1,6 @@
 # SmartCourse - Entity Relationship Diagram (ERD)
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** February 10, 2026  
 **Author:** SmartCourse Architecture Team  
 **Scope:** Core Platform Entities (Excluding AI/LLM/Vector DB Components)
@@ -14,113 +14,109 @@
 │                                     SMARTCOURSE - ENTITY RELATIONSHIP DIAGRAM                                    │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-                                            ┌──────────────────────┐
-                                            │   INSTRUCTOR_PROFILE │
-                                            ├──────────────────────┤
-                                            │ PK id                │
-                                            │ FK user_id (UNIQUE)  │
-                                            │    specialization    │
-                                            │    bio               │
-                                            │    total_students    │
-                                            │    rating            │
-                                            │    verified_at       │
-                                            └──────────┬───────────┘
-                                                       │
-                                                       │ 1:1
-                                                       │
-┌──────────────────────┐                    ┌──────────▼───────────┐                    ┌──────────────────────┐
-│     NOTIFICATION     │                    │        USERS         │                    │   REFRESH_TOKENS     │
-├──────────────────────┤                    ├──────────────────────┤                    ├──────────────────────┤
-│ PK id                │                    │ PK id                │                    │ PK id                │
-│ FK user_id           │◄───────────────────┤    email (UNIQUE)    ├───────────────────►│ FK user_id           │
-│    type              │        1:N         │    username (UNIQUE) │        1:N         │    token             │
-│    title             │                    │    hashed_password   │                    │    expires_at        │
-│    message           │                    │    first_name        │                    │    is_revoked        │
-│    priority          │                    │    last_name         │                    │    created_at        │
-│    is_read           │                    │    role              │                    └──────────────────────┘
-│    created_at        │                    │    is_active         │
-└──────────────────────┘                    │    is_verified       │
-                                            │    created_at        │
-                                            │    updated_at        │
-                                            └──────────┬───────────┘
-                                                       │
-                        ┌──────────────────────────────┼──────────────────────────────┐
-                        │                              │                              │
-                        │ 1:N (as instructor)          │ 1:N (as student)             │
-                        │                              │                              │
-             ┌──────────▼───────────┐       ┌──────────▼───────────┐       ┌──────────▼───────────┐
-             │       COURSES        │       │     ENROLLMENTS      │       │       EVENTS         │
-             ├──────────────────────┤       ├──────────────────────┤       ├──────────────────────┤
-             │ PK id                │       │ PK id                │       │ PK id                │
-             │    title             │       │ FK student_id        │       │ FK user_id           │
-             │    slug (UNIQUE)     │       │ FK course_id         │       │    event_type        │
-             │    description       │  1:N  │    status            │       │    entity_type       │
-             │ FK instructor_id     │──────►│    enrolled_at       │       │    entity_id         │
-             │    category          │       │    completed_at      │       │    payload (JSONB)   │
-             │    level             │       │    completion_%      │       │    status            │
-             │    status            │       │    last_accessed_at  │       │    kafka_offset      │
-             │    published_at      │       │    payment_status    │       │    created_at        │
-             │    max_students      │       └──────────┬───────────┘       └──────────────────────┘
-             │    price             │                  │
-             │    created_at        │                  │
-             └──────────┬───────────┘                  │
-                        │                              │
-                        │                   ┌──────────┼───────────┐
-                        │                   │          │           │
-                        │                   │ 1:1      │ 1:1       │ 1:N
-                        │                   │          │           │
-             ┌──────────▼───────────┐      ┌▼──────────▼──┐  ┌─────▼────────────────┐
-             │    COURSE_MODULES    │      │   PROGRESS   │  │ ENROLLMENT_HISTORY   │
-             │     (MongoDB)        │      ├──────────────┤  ├──────────────────────┤
-             ├──────────────────────┤      │ PK id        │  │ PK id                │
-             │ _id (ObjectId)       │      │FK enrollment │  │ FK enrollment_id     │
-             │ course_id            │      │   completed  │  │    action            │
-             │ modules: [           │      │   _modules[] │  │    previous_status   │
-             │   { module_id,       │      │   completed  │  │    new_status        │
-             │     title,           │      │   _lessons[] │  │    reason            │
-             │     description,     │      │   total_%    │  │    performed_by      │
-             │     order,           │      │   time_spent │  │    created_at        │
-             │     lessons: [       │      │   updated_at │  └──────────────────────┘
-             │       { lesson_id,   │      └──────────────┘
-             │         title,       │                │
-             │         type,        │                │ 1:1
-             │         content,     │                │
-             │         duration }   │      ┌─────────▼────────────┐
-             │     ]                │      │    CERTIFICATES      │
-             │   }                  │      ├──────────────────────┤
-             │ ]                    │      │ PK id                │
-             │ metadata             │      │ FK enrollment_id     │
-             │ total_duration       │      │ FK student_id        │
-             │ created_at           │      │ FK course_id         │
-             └──────────────────────┘      │    certificate_number│
-                                           │    issue_date        │
-                                           │    verification_code │
-                                           │    certificate_url   │
-                                           │    grade             │
-                                           │    is_revoked        │
-                                           └──────────────────────┘
+
+                                          ┌──────────────────────┐
+                                          │        USERS         │
+                                          ├──────────────────────┤
+                                          │ PK id                │
+                                          │    email (UNIQUE)    │
+                                          │    username (UNIQUE) │
+                                          │    hashed_password   │
+                                          │    first_name        │
+                                          │    last_name         │
+                                          │    role              │
+                                          │    is_active         │
+                                          │    is_verified       │
+                                          │    created_at        │
+                                          │    updated_at        │
+                                          └──────────┬───────────┘
+                                                     │
+                         ┌───────────────────────────┴───────────────────────────┐
+                         │                                                       │
+                         │ 1:1 (becomes instructor)                              │ 1:N (as student)
+                         ▼                                                       ▼
+              ┌──────────────────────┐                                ┌──────────────────────┐
+              │  INSTRUCTOR_PROFILE  │                                │     ENROLLMENTS      │
+              ├──────────────────────┤                                ├──────────────────────┤
+              │ PK id                │                                │ PK id                │
+              │ FK user_id (UNIQUE)  │                                │ FK student_id        │◄── Users
+              │    specialization    │                                │ FK course_id         │◄── Courses
+              │    bio               │                                │    status            │
+              │    total_students    │                                │    enrolled_at       │
+              │    rating            │                                │    completed_at      │
+              │    verified_at       │                                │    completion_%      │
+              └──────────┬───────────┘                                │    last_accessed_at  │
+                         │                                            │    payment_status    │
+                         │ 1:N (creates courses)                      └──────────┬───────────┘
+                         ▼                                                       │
+              ┌──────────────────────┐                                           │
+              │       COURSES        │───────────────────────────────────────────┘
+              ├──────────────────────┤              1:N (has many enrollments)
+              │ PK id                │
+              │    title             │                              ┌────────────┴────────────┐
+              │    slug (UNIQUE)     │                              │                         │
+              │    description       │                              │ 1:1                     │ 1:1
+              │ FK instructor_id     │                              │ (tracks progress)       │ (earns certificate)
+              │    category          │                              │                         │
+              │    level             │                              ▼                         ▼
+              │    status            │                   ┌──────────────────────┐  ┌──────────────────────┐
+              │    published_at      │                   │      PROGRESS        │  │    CERTIFICATES      │
+              │    max_students      │                   ├──────────────────────┤  ├──────────────────────┤
+              │    price             │                   │ PK id                │  │ PK id                │
+              │    created_at        │                   │ FK enrollment_id     │  │ FK enrollment_id     │
+              └──────────┬───────────┘                   │    completed_modules │  │ FK student_id        │
+                         │                               │    completed_lessons │  │ FK course_id         │
+                         │ 1:1 (has content)             │    total_%           │  │    certificate_number│
+                         ▼                               │    time_spent        │  │    issue_date        │
+              ┌──────────────────────┐                   │    current_module_id │  │    verification_code │
+              │    COURSE_CONTENT    │                   │    current_lesson_id │  │    grade             │
+              │     (MongoDB)        │                   │    updated_at        │  │    is_revoked        │
+              ├──────────────────────┤                   └──────────┬───────────┘  └──────────────────────┘
+              │ _id (ObjectId)       │                              │
+              │ course_id            │                              │ Progress references
+              │ modules: [           │                              │ module/lesson IDs
+              │   { module_id,       │◄─────────────────────────────┘
+              │   { module_id,       │
+              │     title,           │
+              │     order,           │
+              │     lessons: [...] } │
+              │ ]                    │
+              │ metadata             │
+              │ total_duration       │
+              └──────────────────────┘
 
 
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                              SUPPORTING ENTITIES                                                  │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐
-│  ANALYTICS_METRICS   │      │ WORKFLOW_EXECUTIONS  │      │   COURSE_MATERIALS   │      │    ANNOUNCEMENTS     │
-├──────────────────────┤      ├──────────────────────┤      │      (MongoDB)       │      ├──────────────────────┤
-│ PK id                │      │ PK id                │      ├──────────────────────┤      │ PK id                │
-│    metric_name       │      │    workflow_id       │      │ _id (ObjectId)       │      │ FK course_id         │
-│    metric_value      │      │    workflow_type     │      │ course_id            │      │ FK instructor_id     │
-│    metric_type       │      │    run_id            │      │ module_id            │      │    title             │
-│    dimension (JSONB) │      │    entity_type       │      │ lesson_id            │      │    content           │
-│    aggregation_period│      │    entity_id         │      │ file_name            │      │    priority          │
-│    recorded_at       │      │ FK user_id           │      │ file_type            │      │    is_pinned         │
-│    created_at        │      │    status            │      │ file_size            │      │    published_at      │
-└──────────────────────┘      │    started_at        │      │ file_url             │      │    expires_at        │
-                              │    completed_at      │      │ metadata             │      │    created_at        │
-                              │    error_message     │      │ created_at           │      └──────────────────────┘
-                              │    result (JSONB)    │      └──────────────────────┘
-                              └──────────────────────┘
+┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
+│     NOTIFICATION     │    │       EVENTS         │    │  ANALYTICS_METRICS   │    │ WORKFLOW_EXECUTIONS  │
+├──────────────────────┤    ├──────────────────────┤    ├──────────────────────┤    ├──────────────────────┤
+│ PK id                │    │ PK id                │    │ PK id                │    │ PK id                │
+│ FK user_id           │    │ FK user_id           │    │    metric_name       │    │    workflow_id       │
+│    type              │    │    event_type        │    │    metric_value      │    │    workflow_type     │
+│    title             │    │    entity_type       │    │    metric_type       │    │    run_id            │
+│    message           │    │    entity_id         │    │    dimension (JSONB) │    │ FK user_id           │
+│    priority          │    │    payload (JSONB)   │    │    recorded_at       │    │    status            │
+│    is_read           │    │    status            │    │    created_at        │    │    started_at        │
+│    created_at        │    │    kafka_offset      │    └──────────────────────┘    │    completed_at      │
+└──────────────────────┘    │    created_at        │                                │    result (JSONB)    │
+                            └──────────────────────┘                                └──────────────────────┘
+
+                            ┌──────────────────────┐
+                            │   COURSE_MATERIALS   │
+                            │      (MongoDB)       │
+                            ├──────────────────────┤
+                            │ _id (ObjectId)       │
+                            │ course_id            │
+                            │ module_id            │
+                            │ lesson_id            │
+                            │ file_name            │
+                            │ file_type            │
+                            │ file_url             │
+                            │ created_at           │
+                            └──────────────────────┘
 ```
 
 ---
@@ -156,29 +152,29 @@ Central entity storing all platform users with role-based access.
 
 Main entity for course metadata and status tracking.
 
-| Column              | Type                                       | Constraints              | Description                  |
-| ------------------- | ------------------------------------------ | ------------------------ | ---------------------------- |
-| id                  | SERIAL                                     | PRIMARY KEY              | Auto-incrementing identifier |
-| title               | VARCHAR(255)                               | NOT NULL                 | Course title                 |
-| slug                | VARCHAR(255)                               | UNIQUE, NOT NULL         | URL-friendly identifier      |
-| description         | TEXT                                       |                          | Short description            |
-| long_description    | TEXT                                       |                          | Detailed description         |
-| instructor_id       | INTEGER                                    | FK → users(id), NOT NULL | Course instructor            |
-| category            | VARCHAR(100)                               | INDEX                    | Course category              |
-| level               | ENUM('beginner','intermediate','advanced') |                          | Difficulty level             |
-| language            | VARCHAR(50)                                | DEFAULT 'en'             | Course language              |
-| duration_hours      | DECIMAL(5,2)                               |                          | Estimated duration           |
-| price               | DECIMAL(10,2)                              | DEFAULT 0.00             | Course price                 |
-| currency            | VARCHAR(3)                                 | DEFAULT 'USD'            | Price currency               |
-| thumbnail_url       | VARCHAR(500)                               |                          | Thumbnail image              |
-| status              | ENUM('draft','published','archived')       | NOT NULL, INDEX          | Course status                |
-| published_at        | TIMESTAMP                                  |                          | Publication time             |
-| max_students        | INTEGER                                    |                          | Enrollment limit             |
-| prerequisites       | TEXT                                       |                          | Required prerequisites       |
-| learning_objectives | TEXT                                       |                          | What students will learn     |
-| created_at          | TIMESTAMP                                  | DEFAULT NOW()            | Creation time                |
-| updated_at          | TIMESTAMP                                  | ON UPDATE NOW()          | Last update                  |
-| is_deleted          | BOOLEAN                                    | DEFAULT FALSE            | Soft delete flag             |
+| Column              | Type                                       | Constraints                            | Description                  |
+| ------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------- |
+| id                  | SERIAL                                     | PRIMARY KEY                            | Auto-incrementing identifier |
+| title               | VARCHAR(255)                               | NOT NULL                               | Course title                 |
+| slug                | VARCHAR(255)                               | UNIQUE, NOT NULL                       | URL-friendly identifier      |
+| description         | TEXT                                       |                                        | Short description            |
+| long_description    | TEXT                                       |                                        | Detailed description         |
+| instructor_id       | INTEGER                                    | FK → instructor_profiles(id), NOT NULL | Course instructor            |
+| category            | VARCHAR(100)                               | INDEX                                  | Course category              |
+| level               | ENUM('beginner','intermediate','advanced') |                                        | Difficulty level             |
+| language            | VARCHAR(50)                                | DEFAULT 'en'                           | Course language              |
+| duration_hours      | DECIMAL(5,2)                               |                                        | Estimated duration           |
+| price               | DECIMAL(10,2)                              | DEFAULT 0.00                           | Course price                 |
+| currency            | VARCHAR(3)                                 | DEFAULT 'USD'                          | Price currency               |
+| thumbnail_url       | VARCHAR(500)                               |                                        | Thumbnail image              |
+| status              | ENUM('draft','published','archived')       | NOT NULL, INDEX                        | Course status                |
+| published_at        | TIMESTAMP                                  |                                        | Publication time             |
+| max_students        | INTEGER                                    |                                        | Enrollment limit             |
+| prerequisites       | TEXT                                       |                                        | Required prerequisites       |
+| learning_objectives | TEXT                                       |                                        | What students will learn     |
+| created_at          | TIMESTAMP                                  | DEFAULT NOW()                          | Creation time                |
+| updated_at          | TIMESTAMP                                  | ON UPDATE NOW()                        | Last update                  |
+| is_deleted          | BOOLEAN                                    | DEFAULT FALSE                          | Soft delete flag             |
 
 ---
 
@@ -228,6 +224,34 @@ Detailed progress tracking per enrollment.
 | last_accessed_at   | TIMESTAMP | DEFAULT NOW()                | Last access                  |
 | created_at         | TIMESTAMP | DEFAULT NOW()                | Creation time                |
 | updated_at         | TIMESTAMP | ON UPDATE NOW()              | Last update                  |
+
+**How Progress Works with MongoDB Modules/Lessons:**
+
+The Progress table (PostgreSQL) stores **references** to MongoDB module/lesson IDs, not the actual content:
+
+1. **ID Matching**: MongoDB's `COURSE_CONTENT` assigns each module a `module_id` (integer) and each lesson a `lesson_id` (integer). These are simple sequential IDs within each course.
+
+2. **Array Storage**: Progress stores completed IDs in PostgreSQL arrays:
+   - `completed_modules = [1, 2, 3]` → modules 1, 2, 3 are done
+   - `completed_lessons = [1, 2, 3, 4, 5, 6]` → lessons 1-6 are done
+
+3. **Calculation Flow**:
+
+   ```
+   Student completes lesson 5 in module 2
+   ↓
+   Progress Service adds 5 to completed_lessons array
+   ↓
+   Service fetches course metadata from MongoDB (total_modules, total_lessons)
+   ↓
+   Calculates: completion_% = (completed_lessons.length / total_lessons) × 100
+   ↓
+   Updates enrollment.completion_percentage
+   ```
+
+4. **Current Position**: `current_module_id` and `current_lesson_id` track where the student left off for resume functionality.
+
+5. **Why This Works**: MongoDB stores the content structure (what's IN module 2), PostgreSQL stores progress state (IS module 2 complete?). The IDs are the bridge between them.
 
 ---
 
@@ -444,19 +468,20 @@ Course learning materials.
 
 ## 3. Relationship Summary
 
-| Relationship                         | Cardinality | Description                             |
-| ------------------------------------ | ----------- | --------------------------------------- |
-| Users → Courses                      | 1:N         | One instructor creates many courses     |
-| Users → Enrollments                  | 1:N         | One student has many enrollments        |
-| Courses → Enrollments                | 1:N         | One course has many enrollments         |
-| Enrollments → Progress               | 1:1         | Each enrollment has one progress record |
-| Enrollments → Certificates           | 1:1         | Each completion has one certificate     |
-| Users → Notifications                | 1:N         | One user receives many notifications    |
-| Users → Events                       | 1:N         | One user triggers many events           |
-| Users → Instructor_Profiles          | 1:1         | Instructors have one profile            |
-| Users → Workflow_Executions          | 1:N         | One user triggers many workflows        |
-| Courses → Course_Content (MongoDB)   | 1:1         | Each course has content document        |
-| Courses → Course_Materials (MongoDB) | 1:N         | Each course has many materials          |
+| Relationship                         | Cardinality | Description                               |
+| ------------------------------------ | ----------- | ----------------------------------------- |
+| Users → Instructor_Profiles          | 1:1         | Instructors have one profile              |
+| Instructor_Profiles → Courses        | 1:N         | One instructor creates many courses       |
+| Users → Enrollments                  | 1:N         | One student has many enrollments          |
+| Courses → Enrollments                | 1:N         | One course has many enrollments           |
+| Enrollments → Progress               | 1:1         | Each enrollment has one progress record   |
+| Enrollments → Certificates           | 1:1         | Each completion has one certificate       |
+| Users → Notifications                | 1:N         | One user receives many notifications      |
+| Users → Events                       | 1:N         | One user triggers many events             |
+| Users → Workflow_Executions          | 1:N         | One user triggers many workflows          |
+| Courses → Course_Content (MongoDB)   | 1:1         | Each course has content document          |
+| Courses → Course_Materials (MongoDB) | 1:N         | Each course has many materials            |
+| Progress ↔ Course_Content (MongoDB)  | Reference   | Progress stores MongoDB module/lesson IDs |
 
 ---
 
@@ -536,7 +561,7 @@ db.course_materials.createIndex({ created_at: -1 });
 -- Courses
 ALTER TABLE courses
 ADD CONSTRAINT fk_courses_instructor
-FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE RESTRICT;
+FOREIGN KEY (instructor_id) REFERENCES instructor_profiles(id) ON DELETE RESTRICT;
 
 -- Enrollments
 ALTER TABLE enrollments
@@ -672,4 +697,4 @@ CHECK (average_rating >= 0 AND average_rating <= 5);
 
 ---
 
-_Document Version: 1.0 | Last Updated: February 10, 2026_
+_Document Version: 1.1 | Last Updated: February 10, 2026_
