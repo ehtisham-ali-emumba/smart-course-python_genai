@@ -1,9 +1,23 @@
 # SmartCourse - System Design Document
 
-**Version:** 1.0  
-**Date:** February 10, 2026  
+**Version:** 1.1  
+**Date:** February 11, 2026  
 **Author:** SmartCourse Architecture Team  
 **Scope:** Complete System Architecture (Excluding AI/LLM/Vector DB Components)
+
+---
+
+## Key Architecture Decisions
+
+| Decision              | Choice                                       | Rationale                                                          |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| **JWT Algorithm**     | HS256 (symmetric)                            | Simpler key management, sufficient for internal services           |
+| **JWT Verification**  | API Gateway only                             | Single point of authentication, services trust gateway             |
+| **Dependencies**      | pyproject.toml                               | Modern Python packaging standard, no requirements.txt              |
+| **Containerization**  | Dockerfile per service + root docker-compose | Each service is independently deployable                           |
+| **Local Development** | venv per service                             | Can run services without Docker if needed                          |
+| **Shared Code**       | shared/ folder                               | Reusable utilities, schemas, middleware across services            |
+| **File Naming**       | No folder prefix                             | e.g., `repositories/user.py` NOT `repositories/user_repository.py` |
 
 ---
 
@@ -39,25 +53,28 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                          SERVICES LAYER                                                          │
 │                                                                                                                  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐        │
-│  │  USER SERVICE   │  │ COURSE SERVICE  │  │ENROLLMENT SVC   │  │ PROGRESS SVC    │  │ CONTENT SVC     │        │
-│  │   Port: 8001    │  │   Port: 8002    │  │   Port: 8003    │  │   Port: 8004    │  │   Port: 8006    │        │
-│  │                 │  │                 │  │                 │  │                 │  │                 │        │
-│  │ • Register      │  │ • CRUD Courses  │  │ • Enroll        │  │ • Track         │  │ • Process       │        │
-│  │ • Login         │  │ • Modules       │  │ • Unenroll      │  │ • Update        │  │ • Extract       │        │
-│  │ • JWT Auth      │  │ • Publish       │  │ • Validate      │  │ • Complete      │  │ • Store         │        │
-│  │ • Profiles      │  │ • Materials     │  │ • History       │  │ • Quiz Scores   │  │ • Transform     │        │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘        │
-│           │                    │                    │                    │                    │                 │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                                                  │
-│  │NOTIFICATION SVC │  │ ANALYTICS SVC   │  │ CERTIFICATE SVC │                                                  │
-│  │   Port: 8005    │  │   Port: 8008    │  │   Port: 8009    │                                                  │
-│  │                 │  │                 │  │                 │                                                  │
-│  │ • Email         │  │ • Metrics       │  │ • Generate      │                                                  │
-│  │ • Push          │  │ • Reports       │  │ • Verify        │                                                  │
-│  │ • In-App        │  │ • Dashboards    │  │ • Revoke        │                                                  │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                                                  │
-└───────────┼────────────────────┼────────────────────┼───────────────────────────────────────────────────────────┘
+│  ┌──────────────────────────┐  ┌────────────────────────────────────────────────────────┐                        │
+│  │      USER SERVICE        │  │                  COURSE SERVICE (MERGED)               │                        │
+│  │       Port: 8001         │  │                     Port: 8002                         │                        │
+│  │                          │  │                                                        │                        │
+│  │  • Register              │  │  • CRUD Courses        • Enrollments                   │                        │
+│  │  • Login                 │  │  • Modules             • Progress Tracking             │                        │
+│  │  • JWT Token Generation  │  │  • Materials           • Certificates                  │                        │
+│  │  • User CRUD             │  │  • Publishing          • Quiz Scoring                  │                        │
+│  │  • Instructor Profiles   │  │                                                        │                        │
+│  │  • Password Management   │  │  (Combines: Course + Enrollment + Progress +           │                        │
+│  │                          │  │   Certificate functionality)                           │                        │
+│  └────────────┬─────────────┘  └──────────────────────────┬─────────────────────────────┘                        │
+│               │                                           │                                                      │
+│  ┌──────────────────────────┐  ┌──────────────────────────┐                                                      │
+│  │   NOTIFICATION SERVICE   │  │    ANALYTICS SERVICE     │                                                      │
+│  │       Port: 8005         │  │       Port: 8008         │                                                      │
+│  │                          │  │                          │                                                      │
+│  │  • Email Notifications   │  │  • Metrics Collection    │                                                      │
+│  │  • Push Notifications    │  │  • Reports               │                                                      │
+│  │  • In-App Notifications  │  │  • Dashboards            │                                                      │
+│  └────────────┬─────────────┘  └────────────┬─────────────┘                                                      │
+└───────────────┼─────────────────────────────┼────────────────────────────────────────────────────────────────────┘
             │                    │                    │
             └────────────────────┼────────────────────┘
                                  │
@@ -133,33 +150,39 @@
 
 ### 2.1 Synchronous Communication (REST/gRPC)
 
-| From                | To                 | Protocol | Endpoint              | Purpose                   |
-| ------------------- | ------------------ | -------- | --------------------- | ------------------------- |
-| API Gateway         | User Service       | REST     | `/auth/*`, `/users/*` | Authentication, User CRUD |
-| API Gateway         | Course Service     | REST     | `/courses/*`          | Course CRUD               |
-| API Gateway         | Enrollment Service | REST     | `/enrollments/*`      | Enrollment operations     |
-| API Gateway         | Progress Service   | REST     | `/progress/*`         | Progress tracking         |
-| API Gateway         | Analytics Service  | REST     | `/analytics/*`        | Dashboard data            |
-| Enrollment Service  | Course Service     | REST     | `/courses/{id}`       | Validate course exists    |
-| Enrollment Service  | User Service       | REST     | `/users/{id}`         | Validate student          |
-| Certificate Service | Course Service     | REST     | `/courses/{id}`       | Get course details        |
+| From           | To                   | Protocol | Endpoint                                                         | Purpose                                    |
+| -------------- | -------------------- | -------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| API Gateway    | User Service         | REST     | `/auth/*`, `/users/*`                                            | Authentication, User CRUD                  |
+| API Gateway    | Course Service       | REST     | `/courses/*`, `/enrollments/*`, `/progress/*`, `/certificates/*` | Course, Enrollment, Progress, Certificates |
+| API Gateway    | Analytics Service    | REST     | `/analytics/*`                                                   | Dashboard data                             |
+| API Gateway    | Notification Service | REST     | `/notifications/*`                                               | Notification management                    |
+| Course Service | User Service         | REST     | `/users/{id}`                                                    | Validate student exists                    |
+
+**Note:** API Gateway is the ONLY interface for frontend. It handles:
+
+- JWT verification (HS256 algorithm)
+- Rate limiting
+- Request routing to appropriate services
+- Response aggregation
 
 ### 2.2 Asynchronous Communication (Events)
 
-| Producer            | Event                       | Topic               | Consumers                            |
-| ------------------- | --------------------------- | ------------------- | ------------------------------------ |
-| User Service        | `user.registered`           | user.events         | Analytics, Notification              |
-| User Service        | `user.verified`             | user.events         | Analytics                            |
-| Course Service      | `course.created`            | course.events       | Analytics                            |
-| Course Service      | `course.published`          | course.events       | Content, Analytics                   |
-| Course Service      | `course.updated`            | course.events       | Content                              |
-| Course Service      | `course.archived`           | course.events       | Notification, Analytics              |
-| Enrollment Service  | `enrollment.created`        | enrollment.events   | Progress, Analytics, Notification    |
-| Enrollment Service  | `enrollment.completed`      | enrollment.events   | Certificate, Analytics, Notification |
-| Enrollment Service  | `enrollment.dropped`        | enrollment.events   | Analytics                            |
-| Progress Service    | `progress.updated`          | progress.events     | Analytics                            |
-| Progress Service    | `progress.module_completed` | progress.events     | Analytics, Notification              |
-| Certificate Service | `certificate.issued`        | notification.events | Notification                         |
+| Producer       | Event                       | Topic         | Consumers               |
+| -------------- | --------------------------- | ------------- | ----------------------- |
+| User Service   | `user.registered`           | user.events   | Analytics, Notification |
+| User Service   | `user.verified`             | user.events   | Analytics               |
+| Course Service | `course.created`            | course.events | Analytics               |
+| Course Service | `course.published`          | course.events | Analytics, Notification |
+| Course Service | `course.updated`            | course.events | Analytics               |
+| Course Service | `course.archived`           | course.events | Notification, Analytics |
+| Course Service | `enrollment.created`        | course.events | Analytics, Notification |
+| Course Service | `enrollment.completed`      | course.events | Analytics, Notification |
+| Course Service | `enrollment.dropped`        | course.events | Analytics               |
+| Course Service | `progress.updated`          | course.events | Analytics               |
+| Course Service | `progress.module_completed` | course.events | Analytics, Notification |
+| Course Service | `certificate.issued`        | course.events | Notification            |
+
+**Note:** Course Service now publishes all course-related events (including enrollment, progress, certificate) since these functionalities are merged.
 
 ---
 
@@ -495,19 +518,23 @@
 
 ### 5.1 API Gateway
 
-| Property             | Value                                                      |
-| -------------------- | ---------------------------------------------------------- |
-| **Port**             | 8000                                                       |
-| **Technology**       | FastAPI + Uvicorn                                          |
-| **Responsibilities** | Auth, Rate Limiting, Request Routing, Response Aggregation |
-| **Connects To**      | All microservices, Redis                                   |
+| Property             | Value                                                                          |
+| -------------------- | ------------------------------------------------------------------------------ |
+| **Port**             | 8000                                                                           |
+| **Technology**       | FastAPI + Uvicorn                                                              |
+| **Responsibilities** | JWT Verification (HS256), Rate Limiting, Request Routing, Response Aggregation |
+| **Connects To**      | All microservices, Redis                                                       |
+| **Dockerfile**       | services/api-gateway/Dockerfile                                                |
+| **Dependencies**     | pyproject.toml (NO requirements.txt)                                           |
 
 **Key Middleware:**
 
-- JWT Authentication (python-jose)
+- JWT Verification using HS256 (python-jose) - **Only point where JWT is verified**
 - Rate Limiting (redis-based, 100 req/min per user)
 - Request Validation (Pydantic)
 - OpenTelemetry Tracing
+
+**Important:** The API Gateway is the ONLY interface for frontend clients. All JWT verification happens here. Backend services trust requests forwarded from the gateway.
 
 ---
 
@@ -519,12 +546,23 @@
 | **Database**         | PostgreSQL (users, instructor_profiles) |
 | **Cache**            | Redis (sessions, tokens)                |
 | **Events Published** | user.registered, user.verified          |
+| **Dockerfile**       | services/user-service/Dockerfile        |
+| **Dependencies**     | pyproject.toml (NO requirements.txt)    |
+| **Local Dev**        | venv per service                        |
+
+**Responsibilities:**
+
+- User registration, login, profile management
+- JWT token generation (HS256 algorithm)
+- Password management (bcrypt hashing)
+- Instructor profile management
+- All authentication-related functionality
 
 **Endpoints:**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | /auth/register | User registration |
-| POST | /auth/login | User login, returns JWT |
+| POST | /auth/login | User login, returns JWT (HS256) |
 | POST | /auth/refresh | Refresh access token |
 | GET | /auth/me | Current user profile |
 | GET | /users/{id} | Get user by ID |
@@ -533,14 +571,26 @@
 
 ---
 
-### 5.3 Course Service
+### 5.3 Course Service (MERGED)
 
-| Property                | Value                                                             |
-| ----------------------- | ----------------------------------------------------------------- |
-| **Port**                | 8002                                                              |
-| **Database**            | PostgreSQL (courses), MongoDB (course_content)                    |
-| **Events Published**    | course.created, course.published, course.updated, course.archived |
-| **Workflows Triggered** | CoursePublishingWorkflow                                          |
+| Property                | Value                                                                     |
+| ----------------------- | ------------------------------------------------------------------------- |
+| **Port**                | 8002                                                                      |
+| **Database**            | PostgreSQL (courses, enrollments, certificates), MongoDB (course_content) |
+| **Events Published**    | course._, enrollment._, progress._, certificate._                         |
+| **Workflows Triggered** | CoursePublishingWorkflow, CertificateGenerationWorkflow                   |
+| **Dockerfile**          | services/course-service/Dockerfile                                        |
+| **Dependencies**        | pyproject.toml (NO requirements.txt)                                      |
+| **Local Dev**           | venv per service                                                          |
+
+**Note:** This service combines the functionality of the previously separate Course, Enrollment, Progress, and Certificate services.
+
+**Responsibilities:**
+
+- Course CRUD, modules, lessons, materials
+- Student enrollments (merged with progress tracking)
+- Progress tracking (merged into enrollments table)
+- Certificate generation and verification
 
 **Endpoints:**
 | Method | Endpoint | Description |
@@ -554,6 +604,16 @@
 | POST | /courses/{id}/modules | Add module |
 | PUT | /courses/{id}/modules/{mid} | Update module |
 | POST | /courses/{id}/materials | Upload material |
+| POST | /enrollments | Enroll in course |
+| GET | /enrollments/my-courses | Student's enrollments |
+| GET | /enrollments/{id} | Get enrollment details (includes progress) |
+| DELETE | /enrollments/{id} | Drop course |
+| GET | /enrollments/{id}/progress | Get progress summary |
+| POST | /lessons/{id}/complete | Mark lesson complete |
+| POST | /quizzes/{id}/submit | Submit quiz |
+| POST | /enrollments/{id}/certificate | Generate certificate |
+| GET | /certificates/{id} | Get certificate |
+| GET | /certificates/verify/{code} | Verify certificate |
 
 ---
 
@@ -912,7 +972,7 @@ RedisInstrumentor().instrument()
 | Data Type    | Protection                      |
 | ------------ | ------------------------------- |
 | Passwords    | Bcrypt hashing (cost factor 12) |
-| JWT Tokens   | RS256 signing, 15min expiry     |
+| JWT Tokens   | HS256 signing, 15min expiry     |
 | PII          | Encrypted at rest (AES-256)     |
 | Certificates | Signed, verification codes      |
 | API Keys     | Hashed storage, rate limited    |
@@ -959,4 +1019,4 @@ RedisInstrumentor().instrument()
 
 ---
 
-_Document Version: 1.0 | Last Updated: February 10, 2026_
+_Document Version: 1.1 | Last Updated: February 11, 2026_

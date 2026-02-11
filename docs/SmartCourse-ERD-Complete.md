@@ -1,9 +1,19 @@
 # SmartCourse - Entity Relationship Diagram (ERD)
 
-**Version:** 1.1  
-**Date:** February 10, 2026  
+**Version:** 1.2  
+**Date:** February 11, 2026  
 **Author:** SmartCourse Architecture Team  
 **Scope:** Core Platform Entities (Excluding AI/LLM/Vector DB Components)
+
+---
+
+## Key Schema Decisions
+
+| Decision                              | Rationale                                                      |
+| ------------------------------------- | -------------------------------------------------------------- |
+| **Merged Enrollments + Progress**     | 1:1 relationship - combining eliminates unnecessary join       |
+| **Certificates → enrollment_id only** | Student/course derived from enrollment, reduces redundancy     |
+| **Progress arrays in Enrollments**    | completed_modules, completed_lessons stored as Postgres arrays |
 
 ---
 
@@ -35,47 +45,46 @@
                          │                                                       │
                          │ 1:1 (becomes instructor)                              │ 1:N (as student)
                          ▼                                                       ▼
-              ┌──────────────────────┐                                ┌──────────────────────┐
-              │  INSTRUCTOR_PROFILE  │                                │     ENROLLMENTS      │
-              ├──────────────────────┤                                ├──────────────────────┤
-              │ PK id                │                                │ PK id                │
-              │ FK user_id (UNIQUE)  │                                │ FK student_id        │◄── Users
-              │    specialization    │                                │ FK course_id         │◄── Courses
-              │    bio               │                                │    status            │
-              │    total_students    │                                │    enrolled_at       │
-              │    rating            │                                │    completed_at      │
-              │    verified_at       │                                │    completion_%      │
-              └──────────┬───────────┘                                │    last_accessed_at  │
-                         │                                            │    payment_status    │
-                         │ 1:N (creates courses)                      └──────────┬───────────┘
-                         ▼                                                       │
-              ┌──────────────────────┐                                           │
-              │       COURSES        │───────────────────────────────────────────┘
-              ├──────────────────────┤              1:N (has many enrollments)
-              │ PK id                │
-              │    title             │                              ┌────────────┴────────────┐
-              │    slug (UNIQUE)     │                              │                         │
-              │    description       │                              │ 1:1                     │ 1:1
-              │ FK instructor_id     │                              │ (tracks progress)       │ (earns certificate)
-              │    category          │                              │                         │
-              │    level             │                              ▼                         ▼
-              │    status            │                   ┌──────────────────────┐  ┌──────────────────────┐
-              │    published_at      │                   │      PROGRESS        │  │    CERTIFICATES      │
-              │    max_students      │                   ├──────────────────────┤  ├──────────────────────┤
-              │    price             │                   │ PK id                │  │ PK id                │
-              │    created_at        │                   │ FK enrollment_id     │  │ FK enrollment_id     │
-              └──────────┬───────────┘                   │    completed_modules │  │ FK student_id        │
-                         │                               │    completed_lessons │  │ FK course_id         │
-                         │ 1:1 (has content)             │    total_%           │  │    certificate_number│
-                         ▼                               │    time_spent        │  │    issue_date        │
-              ┌──────────────────────┐                   │    current_module_id │  │    verification_code │
-              │    COURSE_CONTENT    │                   │    current_lesson_id │  │    grade             │
-              │     (MongoDB)        │                   │    updated_at        │  │    is_revoked        │
-              ├──────────────────────┤                   └──────────┬───────────┘  └──────────────────────┘
-              │ _id (ObjectId)       │                              │
-              │ course_id            │                              │ Progress references
-              │ modules: [           │                              │ module/lesson IDs
-              │   { module_id,       │◄─────────────────────────────┘
+              ┌──────────────────────┐                                ┌─────────────────────────────────┐
+              │  INSTRUCTOR_PROFILE  │                                │  ENROLLMENTS (includes Progress)│
+              ├──────────────────────┤                                ├─────────────────────────────────┤
+              │ PK id                │                                │ PK id                           │
+              │ FK user_id (UNIQUE)  │                                │ FK student_id                   │◄── Users
+              │    specialization    │                                │ FK course_id                    │◄── Courses
+              │    bio               │                                │    status                       │
+              │    total_students    │                                │    enrolled_at                  │
+              │    rating            │                                │    completed_at                 │
+              │    verified_at       │                                │    completion_percentage        │
+              └──────────┬───────────┘                                │    last_accessed_at             │
+                         │                                            │── Progress Fields (merged) ──── │
+                         │ 1:N (creates courses)                      │    completed_modules[]          │
+                         ▼                                            │    completed_lessons[]          │
+              ┌──────────────────────┐                                │    total_modules                │
+              │       COURSES        │───────────────────────────────►│    total_lessons                │
+              ├──────────────────────┤              1:N               │    quiz_scores (JSONB)          │
+              │ PK id                │       (has many enrollments)   │    time_spent_minutes           │
+              │    title             │                                │    current_module_id            │
+              │    slug (UNIQUE)     │                                │    current_lesson_id            │
+              │    description       │                                └────────────────┬────────────────┘
+              │ FK instructor_id     │                                                 │
+              │    category          │                                                 │ 1:1
+              │    level             │                                                 │ (earns certificate)
+              │    status            │                                                 ▼
+              │    published_at      │                              ┌──────────────────────────────────┐
+              │    max_students      │                              │         CERTIFICATES             │
+              │    price             │                              ├──────────────────────────────────┤
+              │    created_at        │                              │ PK id                            │
+              └──────────┬───────────┘                              │ FK enrollment_id (UNIQUE)        │
+                         │                                          │    (student_id derived)          │
+                         │ 1:1 (has content)                        │    (course_id derived)           │
+                         ▼                                          │    certificate_number (UNIQUE)   │
+              ┌──────────────────────┐                              │    issue_date                    │
+              │    COURSE_CONTENT    │                              │    verification_code (UNIQUE)    │
+              │     (MongoDB)        │                              │    grade                         │
+              ├──────────────────────┤                              │    is_revoked                    │
+              │ _id (ObjectId)       │                              └──────────────────────────────────┘
+              │ course_id            │
+              │ modules: [           │
               │   { module_id,       │
               │     title,           │
               │     order,           │
@@ -178,60 +187,56 @@ Main entity for course metadata and status tracking.
 
 ---
 
-#### **ENROLLMENTS**
+#### **ENROLLMENTS (Merged with Progress)**
 
-Tracks student enrollments in courses.
+Tracks student enrollments in courses AND their progress (merged 1:1 relationship).
 
-| Column                | Type                                             | Constraints                | Description                  |
-| --------------------- | ------------------------------------------------ | -------------------------- | ---------------------------- |
-| id                    | SERIAL                                           | PRIMARY KEY                | Auto-incrementing identifier |
-| student_id            | INTEGER                                          | FK → users(id), NOT NULL   | Enrolled student             |
-| course_id             | INTEGER                                          | FK → courses(id), NOT NULL | Target course                |
-| status                | ENUM('active','completed','dropped','suspended') | NOT NULL, INDEX            | Enrollment status            |
-| enrolled_at           | TIMESTAMP                                        | DEFAULT NOW()              | Enrollment time              |
-| started_at            | TIMESTAMP                                        |                            | First access                 |
-| completed_at          | TIMESTAMP                                        |                            | Completion time              |
-| dropped_at            | TIMESTAMP                                        |                            | Drop time                    |
-| completion_percentage | DECIMAL(5,2)                                     | DEFAULT 0.00               | Progress 0-100%              |
-| last_accessed_at      | TIMESTAMP                                        |                            | Last course access           |
-| payment_status        | ENUM('pending','completed','refunded')           |                            | Payment state                |
-| payment_amount        | DECIMAL(10,2)                                    |                            | Amount paid                  |
-| enrollment_source     | VARCHAR(100)                                     |                            | 'web','mobile','api'         |
-| created_at            | TIMESTAMP                                        | DEFAULT NOW()              | Record creation              |
-| updated_at            | TIMESTAMP                                        | ON UPDATE NOW()            | Last update                  |
+| Column                    | Type                                             | Constraints                | Description                              |
+| ------------------------- | ------------------------------------------------ | -------------------------- | ---------------------------------------- |
+| id                        | SERIAL                                           | PRIMARY KEY                | Auto-incrementing identifier             |
+| student_id                | INTEGER                                          | FK → users(id), NOT NULL   | Enrolled student                         |
+| course_id                 | INTEGER                                          | FK → courses(id), NOT NULL | Target course                            |
+| status                    | ENUM('active','completed','dropped','suspended') | NOT NULL, INDEX            | Enrollment status                        |
+| enrolled_at               | TIMESTAMP                                        | DEFAULT NOW()              | Enrollment time                          |
+| started_at                | TIMESTAMP                                        |                            | First access                             |
+| completed_at              | TIMESTAMP                                        |                            | Completion time                          |
+| dropped_at                | TIMESTAMP                                        |                            | Drop time                                |
+| last_accessed_at          | TIMESTAMP                                        |                            | Last course access                       |
+| payment_status            | ENUM('pending','completed','refunded')           |                            | Payment state                            |
+| payment_amount            | DECIMAL(10,2)                                    |                            | Amount paid                              |
+| enrollment_source         | VARCHAR(100)                                     |                            | 'web','mobile','api'                     |
+| **completed_modules**     | INTEGER[]                                        | DEFAULT '{}'               | Completed module IDs (from Progress)     |
+| **completed_lessons**     | INTEGER[]                                        | DEFAULT '{}'               | Completed lesson IDs (from Progress)     |
+| **total_modules**         | INTEGER                                          | NOT NULL, DEFAULT 0        | Total modules count (from Progress)      |
+| **total_lessons**         | INTEGER                                          | NOT NULL, DEFAULT 0        | Total lessons count (from Progress)      |
+| **completion_percentage** | DECIMAL(5,2)                                     | DEFAULT 0.00               | Progress 0-100% (from Progress)          |
+| **completed_quizzes**     | INTEGER[]                                        | DEFAULT '{}'               | Completed quiz IDs (from Progress)       |
+| **quiz_scores**           | JSONB                                            |                            | Scores: {quiz_id: score} (from Progress) |
+| **time_spent_minutes**    | INTEGER                                          | DEFAULT 0                  | Total time spent (from Progress)         |
+| **current_module_id**     | INTEGER                                          |                            | Current module (from Progress)           |
+| **current_lesson_id**     | INTEGER                                          |                            | Current lesson (from Progress)           |
+| created_at                | TIMESTAMP                                        | DEFAULT NOW()              | Record creation                          |
+| updated_at                | TIMESTAMP                                        | ON UPDATE NOW()            | Last update                              |
 
 **Unique Constraint:** `(student_id, course_id)`
 
+**Note:** Fields marked in bold were previously in a separate PROGRESS table. They are now merged into ENROLLMENTS since there was a 1:1 relationship between the two tables.
+
 ---
 
-#### **PROGRESS**
+#### **~~PROGRESS~~ (REMOVED - Merged into ENROLLMENTS)**
 
-Detailed progress tracking per enrollment.
+**This table has been removed.** All progress fields are now part of the ENROLLMENTS table since there was a 1:1 relationship.
 
-| Column             | Type      | Constraints                  | Description                  |
-| ------------------ | --------- | ---------------------------- | ---------------------------- |
-| id                 | SERIAL    | PRIMARY KEY                  | Auto-incrementing identifier |
-| enrollment_id      | INTEGER   | FK → enrollments(id), UNIQUE | Related enrollment           |
-| completed_modules  | INTEGER[] | DEFAULT '{}'                 | Completed module IDs         |
-| completed_lessons  | INTEGER[] | DEFAULT '{}'                 | Completed lesson IDs         |
-| total_modules      | INTEGER   | NOT NULL                     | Total modules count          |
-| total_lessons      | INTEGER   | NOT NULL                     | Total lessons count          |
-| completed_quizzes  | INTEGER[] | DEFAULT '{}'                 | Completed quiz IDs           |
-| quiz_scores        | JSONB     |                              | Scores: {quiz_id: score}     |
-| time_spent_minutes | INTEGER   | DEFAULT 0                    | Total time spent             |
-| current_module_id  | INTEGER   |                              | Current module               |
-| current_lesson_id  | INTEGER   |                              | Current lesson               |
-| last_accessed_at   | TIMESTAMP | DEFAULT NOW()                | Last access                  |
-| created_at         | TIMESTAMP | DEFAULT NOW()                | Creation time                |
-| updated_at         | TIMESTAMP | ON UPDATE NOW()              | Last update                  |
+See ENROLLMENTS table above for the merged schema.
 
 **How Progress Works with MongoDB Modules/Lessons:**
 
-The Progress table (PostgreSQL) stores **references** to MongoDB module/lesson IDs, not the actual content:
+The Enrollment table (PostgreSQL) stores **references** to MongoDB module/lesson IDs, not the actual content:
 
 1. **ID Matching**: MongoDB's `COURSE_CONTENT` assigns each module a `module_id` (integer) and each lesson a `lesson_id` (integer). These are simple sequential IDs within each course.
 
-2. **Array Storage**: Progress stores completed IDs in PostgreSQL arrays:
+2. **Array Storage**: Enrollment stores completed IDs in PostgreSQL arrays:
    - `completed_modules = [1, 2, 3]` → modules 1, 2, 3 are done
    - `completed_lessons = [1, 2, 3, 4, 5, 6]` → lessons 1-6 are done
 
@@ -240,7 +245,7 @@ The Progress table (PostgreSQL) stores **references** to MongoDB module/lesson I
    ```
    Student completes lesson 5 in module 2
    ↓
-   Progress Service adds 5 to completed_lessons array
+   Course Service adds 5 to completed_lessons array in Enrollment
    ↓
    Service fetches course metadata from MongoDB (total_modules, total_lessons)
    ↓
@@ -257,14 +262,12 @@ The Progress table (PostgreSQL) stores **references** to MongoDB module/lesson I
 
 #### **CERTIFICATES**
 
-Generated certificates for course completion.
+Generated certificates for course completion. **Only references enrollment_id** - student and course info are derived from the enrollment relationship.
 
 | Column             | Type         | Constraints                  | Description                  |
 | ------------------ | ------------ | ---------------------------- | ---------------------------- |
 | id                 | SERIAL       | PRIMARY KEY                  | Auto-incrementing identifier |
 | enrollment_id      | INTEGER      | FK → enrollments(id), UNIQUE | Related enrollment           |
-| student_id         | INTEGER      | FK → users(id), NOT NULL     | Certificate holder           |
-| course_id          | INTEGER      | FK → courses(id), NOT NULL   | Completed course             |
 | certificate_number | VARCHAR(100) | UNIQUE, NOT NULL             | Unique cert number           |
 | issue_date         | DATE         | NOT NULL                     | Issue date                   |
 | certificate_url    | VARCHAR(500) |                              | PDF URL                      |
@@ -276,6 +279,13 @@ Generated certificates for course completion.
 | revoked_at         | TIMESTAMP    |                              | Revocation time              |
 | revoked_reason     | TEXT         |                              | Revocation reason            |
 | created_at         | TIMESTAMP    | DEFAULT NOW()                | Creation time                |
+
+**Note:** student_id and course_id are NOT stored directly. They are derived via the enrollment relationship:
+
+- `certificate.enrollment.student_id` → get student
+- `certificate.enrollment.course_id` → get course
+
+This reduces data redundancy and ensures consistency.
 
 ---
 
@@ -468,20 +478,20 @@ Course learning materials.
 
 ## 3. Relationship Summary
 
-| Relationship                         | Cardinality | Description                               |
-| ------------------------------------ | ----------- | ----------------------------------------- |
-| Users → Instructor_Profiles          | 1:1         | Instructors have one profile              |
-| Instructor_Profiles → Courses        | 1:N         | One instructor creates many courses       |
-| Users → Enrollments                  | 1:N         | One student has many enrollments          |
-| Courses → Enrollments                | 1:N         | One course has many enrollments           |
-| Enrollments → Progress               | 1:1         | Each enrollment has one progress record   |
-| Enrollments → Certificates           | 1:1         | Each completion has one certificate       |
-| Users → Notifications                | 1:N         | One user receives many notifications      |
-| Users → Events                       | 1:N         | One user triggers many events             |
-| Users → Workflow_Executions          | 1:N         | One user triggers many workflows          |
-| Courses → Course_Content (MongoDB)   | 1:1         | Each course has content document          |
-| Courses → Course_Materials (MongoDB) | 1:N         | Each course has many materials            |
-| Progress ↔ Course_Content (MongoDB)  | Reference   | Progress stores MongoDB module/lesson IDs |
+| Relationship                           | Cardinality | Description                                    |
+| -------------------------------------- | ----------- | ---------------------------------------------- |
+| Users → Instructor_Profiles            | 1:1         | Instructors have one profile                   |
+| Instructor_Profiles → Courses          | 1:N         | One instructor creates many courses            |
+| Users → Enrollments                    | 1:N         | One student has many enrollments               |
+| Courses → Enrollments                  | 1:N         | One course has many enrollments                |
+| ~~Enrollments → Progress~~             | ~~1:1~~     | **REMOVED** - Progress merged into Enrollments |
+| Enrollments → Certificates             | 1:1         | Each completion has one certificate            |
+| Users → Notifications                  | 1:N         | One user receives many notifications           |
+| Users → Events                         | 1:N         | One user triggers many events                  |
+| Users → Workflow_Executions            | 1:N         | One user triggers many workflows               |
+| Courses → Course_Content (MongoDB)     | 1:1         | Each course has content document               |
+| Courses → Course_Materials (MongoDB)   | 1:N         | Each course has many materials                 |
+| Enrollments ↔ Course_Content (MongoDB) | Reference   | Enrollments store MongoDB module/lesson IDs    |
 
 ---
 
@@ -503,22 +513,22 @@ CREATE INDEX idx_courses_status ON courses(status);
 CREATE INDEX idx_courses_category ON courses(category);
 CREATE INDEX idx_courses_published_at ON courses(published_at);
 
--- Enrollments
+-- Enrollments (includes merged Progress fields)
 CREATE UNIQUE INDEX idx_enrollments_student_course ON enrollments(student_id, course_id);
 CREATE INDEX idx_enrollments_student ON enrollments(student_id);
 CREATE INDEX idx_enrollments_course ON enrollments(course_id);
 CREATE INDEX idx_enrollments_status ON enrollments(status);
 CREATE INDEX idx_enrollments_enrolled_at ON enrollments(enrolled_at);
+CREATE INDEX idx_enrollments_last_accessed ON enrollments(last_accessed_at);
 
--- Progress
-CREATE UNIQUE INDEX idx_progress_enrollment ON progress(enrollment_id);
-CREATE INDEX idx_progress_last_accessed ON progress(last_accessed_at);
+-- Progress table REMOVED - fields merged into Enrollments
 
--- Certificates
+-- Certificates (only enrollment_id reference now)
 CREATE UNIQUE INDEX idx_certificates_number ON certificates(certificate_number);
 CREATE UNIQUE INDEX idx_certificates_verification ON certificates(verification_code);
-CREATE INDEX idx_certificates_student ON certificates(student_id);
-CREATE INDEX idx_certificates_course ON certificates(course_id);
+CREATE INDEX idx_certificates_enrollment ON certificates(enrollment_id);
+-- NOTE: idx_certificates_student and idx_certificates_course REMOVED
+-- Student/course derived from enrollment relationship
 
 -- Notifications
 CREATE INDEX idx_notifications_user_read ON notifications(user_id, is_read, created_at);
@@ -572,23 +582,15 @@ ALTER TABLE enrollments
 ADD CONSTRAINT fk_enrollments_course
 FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE;
 
--- Progress
-ALTER TABLE progress
-ADD CONSTRAINT fk_progress_enrollment
-FOREIGN KEY (enrollment_id) REFERENCES enrollments(id) ON DELETE CASCADE;
+-- Progress table REMOVED - no foreign keys needed
 
--- Certificates
+-- Certificates (only enrollment_id FK now)
 ALTER TABLE certificates
 ADD CONSTRAINT fk_certificates_enrollment
 FOREIGN KEY (enrollment_id) REFERENCES enrollments(id) ON DELETE CASCADE;
 
-ALTER TABLE certificates
-ADD CONSTRAINT fk_certificates_student
-FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE;
-
-ALTER TABLE certificates
-ADD CONSTRAINT fk_certificates_course
-FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE;
+-- NOTE: fk_certificates_student and fk_certificates_course REMOVED
+-- Student/course info derived from enrollment relationship
 
 -- Notifications
 ALTER TABLE notifications
@@ -697,4 +699,4 @@ CHECK (average_rating >= 0 AND average_rating <= 5);
 
 ---
 
-_Document Version: 1.1 | Last Updated: February 10, 2026_
+_Document Version: 1.2 | Last Updated: February 11, 2026_
