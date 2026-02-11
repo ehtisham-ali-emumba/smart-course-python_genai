@@ -59,6 +59,50 @@ services:
     networks:
       - smartcourse-network
 
+  # ═══════════════════════════════════════════════════════════════
+  #  AUTH SIDECAR — JWT verification (Python/FastAPI)
+  # ═══════════════════════════════════════════════════════════════
+  auth-sidecar:
+    build:
+      context: ./services/api-gateway/auth-sidecar
+      dockerfile: Dockerfile
+    container_name: smartcourse-auth-sidecar
+    # No ports exposed to host — only accessible within Docker network
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      - JWT_ALGORITHM=HS256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartcourse-network
+
+  # ═══════════════════════════════════════════════════════════════
+  #  API GATEWAY — Nginx reverse proxy
+  # ═══════════════════════════════════════════════════════════════
+  api-gateway:
+    build:
+      context: ./services/api-gateway/nginx
+      dockerfile: Dockerfile
+    container_name: smartcourse-api-gateway
+    ports:
+      - "8000:8000"           # The ONLY port clients should access
+    depends_on:
+      - auth-sidecar
+      - user-service
+      # FUTURE: Add other services here as they come online
+      # - course-service
+      # - notification-service
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartcourse-network
+
 networks:
   smartcourse-network:
     driver: bridge

@@ -1,0 +1,1 @@
+{"error": "Unauthorized", "message": "Authentication required. Provide a valid JWT token in the Authorization header.", "status": 401}
