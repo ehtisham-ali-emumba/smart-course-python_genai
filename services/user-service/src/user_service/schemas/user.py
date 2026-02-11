@@ -12,6 +12,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     is_verified: bool
+    phone_number: Optional[str] = None        # <-- NEW
     created_at: datetime
     updated_at: datetime
 
@@ -25,6 +26,7 @@ class UserUpdate(BaseModel):
     """User update schema."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    phone_number: Optional[str] = Field(None, min_length=10, max_length=20)  # <-- NEW
 
 
 class InstructorProfileResponse(BaseModel):

@@ -31,15 +31,18 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     opentelemetry-instrumentation-fastapi>=0.43b0 \
     opentelemetry-instrumentation-sqlalchemy>=0.43b0 \
     prometheus-client>=0.19.0 \
-    structlog>=24.1.0
+    structlog>=24.1.0 \
+    alembic>=1.13.0
 
-# Copy application code
 COPY src/ ./src/
+COPY alembic.ini ./
 
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
 
+COPY src/user_service/alembic/ ./src/user_service/alembic/
+
 ENV PYTHONPATH=/app/src:/app
 EXPOSE 8001
 
-CMD ["uvicorn", "user_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn user_service.main:app --host 0.0.0.0 --port 8001"]

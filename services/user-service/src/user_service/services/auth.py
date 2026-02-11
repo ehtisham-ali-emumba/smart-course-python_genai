@@ -42,6 +42,7 @@ class AuthService:
             "role": user_data.role,
             "is_active": True,
             "is_verified": False,
+            "phone_number": user_data.phone_number,  # <-- NEW
         })
 
         return user

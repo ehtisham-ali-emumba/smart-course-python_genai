@@ -16,6 +16,7 @@ class User(Base):
     role = Column(String(50), nullable=False, default="student")  # student, instructor, admin
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
+    phone_number = Column(String(20), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

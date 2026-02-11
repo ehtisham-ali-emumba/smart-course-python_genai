@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -8,6 +10,7 @@ class UserRegister(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8, max_length=100)
     role: str = Field(default="student", pattern="^(student|instructor)$")
+    phone_number: Optional[str] = Field(None, min_length=10, max_length=20)  # <-- NEW
 
 
 class UserLogin(BaseModel):
