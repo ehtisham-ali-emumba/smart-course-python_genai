@@ -424,7 +424,6 @@ dependencies = [
     # Database
     "sqlalchemy>=2.0.25",
     "asyncpg>=0.29.0",
-    "alembic>=1.13.0",
 
     # Cache
     "redis>=5.0.0",
@@ -501,7 +500,6 @@ dependencies = [
     # PostgreSQL
     "sqlalchemy>=2.0.25",
     "asyncpg>=0.29.0",
-    "alembic>=1.13.0",
 
     # MongoDB
     "motor>=3.3.0",
