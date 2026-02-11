@@ -33,7 +33,7 @@ async def register(
     auth_service = AuthService(db)
     try:
         user = await auth_service.register(user_data)
-        return user
+        return UserResponse.model_validate(user)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,4 +145,4 @@ async def get_current_user(
             detail="User not found",
         )
 
-    return user
+    return UserResponse.model_validate(user)

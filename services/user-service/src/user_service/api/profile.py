@@ -32,7 +32,7 @@ async def get_profile(
             detail="User not found",
         )
 
-    return user
+    return UserResponse.model_validate(user)
 
 
 @router.put("/", response_model=UserResponse)
@@ -59,4 +59,4 @@ async def update_profile(
             detail="User not found",
         )
 
-    return user
+    return UserResponse.model_validate(user)
