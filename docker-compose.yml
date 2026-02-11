@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartcourse-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartcourse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartcourse_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-smartcourse}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartcourse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartcourse-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: smartcourse-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-smartcourse_secret}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-smartcourse_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartcourse-network
+
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: smartcourse-user-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartcourse}:${POSTGRES_PASSWORD:-smartcourse_secret}@postgres:5432/${POSTGRES_DB:-smartcourse}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=HS256
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15
+      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+networks:
+  smartcourse-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

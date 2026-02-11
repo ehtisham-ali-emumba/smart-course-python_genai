@@ -85,13 +85,11 @@ services/user-service/
 │       ├── config.py               # Service configuration
 │       ├── api/                    # API layer
 │       │   ├── __init__.py
-│       │   └── v1/
-│       │       ├── __init__.py
-│       │       ├── router.py       # Main router aggregating all routes
-│       │       ├── auth.py         # Auth endpoints (NOT auth_routes.py)
-│       │       ├── users.py        # User endpoints (NOT user_routes.py)
-│       │       ├── instructors.py  # Instructor endpoints
-│       │       └── deps.py         # Route dependencies
+│       │   ├── router.py           # Main router aggregating all routes
+│       │   ├── auth.py             # Auth endpoints (NOT auth_routes.py)
+│       │   ├── users.py            # User endpoints (NOT user_routes.py)
+│       │   ├── instructors.py      # Instructor endpoints
+│       │   └── deps.py             # Route dependencies
 │       ├── models/                 # SQLAlchemy models
 │       │   ├── __init__.py
 │       │   ├── user.py             # User model (NOT user_model.py)
@@ -755,10 +753,10 @@ class JWTAuthMiddleware:
 
     # Endpoints that don't require authentication
     PUBLIC_ENDPOINTS = [
-        "/api/v1/auth/register",
-        "/api/v1/auth/login",
-        "/api/v1/auth/refresh",
-        "/api/v1/courses",  # Public course listing
+        "/api/auth/register",
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/courses",  # Public course listing
         "/health",
         "/docs",
         "/openapi.json",
@@ -827,7 +825,7 @@ class JWTAuthMiddleware:
 **All auth-related endpoints exist in User Service:**
 
 ```python
-# services/user-service/src/user_service/api/v1/auth.py
+# services/user-service/src/user_service/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1000,10 +998,10 @@ The Course Service now handles:
 - Certificate generation
 
 ```python
-# services/course-service/src/course_service/api/v1/router.py
+# services/course-service/src/course_service/api/router.py
 from fastapi import APIRouter
 
-from course_service.api.v1 import (
+from course_service.api import (
     courses,
     modules,
     enrollments,
@@ -1011,7 +1009,7 @@ from course_service.api.v1 import (
     certificates,
 )
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api")
 
 # Course management
 router.include_router(courses.router)
