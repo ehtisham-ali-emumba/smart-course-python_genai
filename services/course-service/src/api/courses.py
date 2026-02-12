@@ -39,8 +39,15 @@ async def list_published_courses(
     """List all published courses (any authenticated user)."""
     service = CourseService(db)
     courses, total = await service.list_published_courses(skip=skip, limit=limit)
+
+    # Handle both SQLAlchemy objects (cache miss) and dicts (cache hit)
+    if courses and isinstance(courses[0], dict):
+        items = [CourseResponse(**c) for c in courses]
+    else:
+        items = [CourseResponse.model_validate(c) for c in courses]
+
     return CourseListResponse(
-        items=[CourseResponse.model_validate(c) for c in courses],
+        items=items,
         total=total,
         skip=skip,
         limit=limit,
@@ -75,6 +82,10 @@ async def get_course(
     course = await service.get_course(course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
+    if isinstance(course, dict):
+        return CourseResponse(**course)
     return CourseResponse.model_validate(course)
 
 

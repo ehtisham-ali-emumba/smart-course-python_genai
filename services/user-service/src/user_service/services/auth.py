@@ -4,6 +4,7 @@ from user_service.core.security import get_password_hash, verify_password
 from user_service.models.user import User
 from user_service.repositories.user import UserRepository
 from user_service.schemas.auth import UserRegister
+from user_service.services.user import UserService
 
 
 class AuthService:
@@ -68,6 +69,7 @@ class AuthService:
 
         return user
 
-    async def get_user_by_id(self, user_id: int) -> User | None:
-        """Get user by ID."""
-        return await self.user_repo.get_by_id(user_id)
+    async def get_user_by_id(self, user_id: int) -> User | dict | None:
+        """Get user by ID (uses cached UserService for consistency)."""
+        user_service = UserService(self.db)
+        return await user_service.get_user(user_id)

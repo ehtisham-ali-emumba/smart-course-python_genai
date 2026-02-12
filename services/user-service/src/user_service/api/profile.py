@@ -32,6 +32,9 @@ async def get_profile(
             detail="User not found",
         )
 
+    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
+    if isinstance(user, dict):
+        return UserResponse(**user)
     return UserResponse.model_validate(user)
 
 

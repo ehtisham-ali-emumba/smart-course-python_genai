@@ -85,10 +85,13 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-smartcourse}:${POSTGRES_PASSWORD:-smartcourse_secret}@postgres:5432/${POSTGRES_DB:-smartcourse}
       - MONGODB_URL=mongodb://${MONGO_USER:-smartcourse}:${MONGO_PASSWORD:-smartcourse_secret}@mongodb:27017/${MONGO_DB:-smartcourse}?authSource=admin
       - MONGODB_DB_NAME=${MONGO_DB:-smartcourse}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/1
     depends_on:
       postgres:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - smartcourse-network

@@ -95,14 +95,19 @@ async def refresh_token(
         auth_service = AuthService(db)
         user = await auth_service.get_user_by_id(int(payload.sub))
 
-        if not user or not user.is_active:
+        is_active = (
+            user.get("is_active", False) if isinstance(user, dict) else (user and user.is_active)
+        )
+        if not user or not is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found or inactive",
             )
 
-        access_token = create_access_token(user.id, user.role)
-        refresh_token = create_refresh_token(user.id, user.role)
+        user_id_val = user["id"] if isinstance(user, dict) else user.id
+        user_role = user["role"] if isinstance(user, dict) else user.role
+        access_token = create_access_token(user_id_val, user_role)
+        refresh_token = create_refresh_token(user_id_val, user_role)
 
         return TokenResponse(
             access_token=access_token,
@@ -145,4 +150,7 @@ async def get_current_user(
             detail="User not found",
         )
 
+    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
+    if isinstance(user, dict):
+        return UserResponse(**user)
     return UserResponse.model_validate(user)

@@ -2,6 +2,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from core.cache import cache_delete, cache_get, cache_set
 from repositories.course_content import CourseContentRepository
 from schemas.course_content import (
     CourseContentCreate,
@@ -14,18 +15,36 @@ from schemas.course_content import (
 )
 
 
+# ── TTL Constants ─────────────────────────────────────────────────
+CONTENT_TTL = 900  # 15 minutes — content rarely changes after publish
+
+
 class CourseContentService:
     """Business logic for course content (MongoDB)."""
 
     def __init__(self, db: AsyncIOMotorDatabase):
         self.content_repo = CourseContentRepository(db)
 
+    # ── READS (with cache) ────────────────────────────────────────
+
     async def get_content(self, course_id: int) -> dict[str, Any] | None:
         """Get full course content by course_id."""
+        # 1. Try cache
+        cache_key = f"course:content:{course_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        # 2. Fallback to MongoDB
         doc = await self.content_repo.get_by_course_id(course_id)
         if doc:
             doc.pop("_id", None)  # Remove MongoDB ObjectId for serialization
+            # 3. Store in cache
+            await cache_set(cache_key, doc, ttl=CONTENT_TTL)
+
         return doc
+
+    # ── WRITES (with cache invalidation) ──────────────────────────
 
     async def create_or_update_content(
         self, course_id: int, data: CourseContentCreate
@@ -46,6 +65,10 @@ class CourseContentService:
 
         doc = await self.content_repo.upsert(course_id, content_data)
         doc.pop("_id", None)
+
+        # Invalidate content cache
+        await cache_delete(f"course:content:{course_id}")
+
         return doc
 
     async def add_module(self, course_id: int, data: ModuleCreate) -> dict[str, Any] | None:
@@ -54,6 +77,7 @@ class CourseContentService:
         doc = await self.content_repo.add_module(course_id, module_data)
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def add_lesson(
@@ -61,9 +85,12 @@ class CourseContentService:
     ) -> dict[str, Any] | None:
         """Add a single lesson to a specific module."""
         lesson_data = data.model_dump()
-        doc = await self.content_repo.add_lesson_to_module(course_id, module_id, lesson_data)
+        doc = await self.content_repo.add_lesson_to_module(
+            course_id, module_id, lesson_data
+        )
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def update_module(
@@ -74,6 +101,7 @@ class CourseContentService:
         doc = await self.content_repo.update_module(course_id, module_id, update_data)
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def update_lesson(
@@ -81,9 +109,12 @@ class CourseContentService:
     ) -> dict[str, Any] | None:
         """Update a lesson in a module."""
         update_data = data.model_dump(exclude_unset=True)
-        doc = await self.content_repo.update_lesson(course_id, module_id, lesson_id, update_data)
+        doc = await self.content_repo.update_lesson(
+            course_id, module_id, lesson_id, update_data
+        )
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def add_resource(
@@ -96,6 +127,7 @@ class CourseContentService:
         )
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def update_resource(
@@ -113,16 +145,22 @@ class CourseContentService:
         )
         if doc:
             doc.pop("_id", None)
+            await cache_delete(f"course:content:{course_id}")
         return doc
 
     async def delete_resource(
         self, course_id: int, module_id: int, lesson_id: int, resource_index: int
     ) -> bool:
         """Delete a media resource from a lesson."""
-        return await self.content_repo.delete_resource_from_lesson(
+        result = await self.content_repo.delete_resource_from_lesson(
             course_id, module_id, lesson_id, resource_index
         )
+        if result:
+            await cache_delete(f"course:content:{course_id}")
+        return result
 
     async def delete_content(self, course_id: int) -> bool:
         """Delete all content for a course."""
-        return await self.content_repo.delete(course_id)
+        result = await self.content_repo.delete(course_id)
+        await cache_delete(f"course:content:{course_id}")
+        return result

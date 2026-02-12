@@ -2,10 +2,16 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.cache import cache_delete, cache_get, cache_set
 from models.enrollment import Enrollment
 from repositories.course import CourseRepository
 from repositories.enrollment import EnrollmentRepository
 from schemas.enrollment import EnrollmentCreate, ProgressUpdate
+
+
+# ── TTL Constants ─────────────────────────────────────────────────
+ENROLLMENT_FLAG_TTL = 1800  # 30 minutes — enrollment status rarely changes
+ENROLLMENT_COUNT_TTL = 300  # 5 minutes
 
 
 class EnrollmentService:
@@ -16,6 +22,32 @@ class EnrollmentService:
         self.enrollment_repo = EnrollmentRepository(db)
         self.course_repo = CourseRepository(db)
 
+    # ── CACHED HELPERS ────────────────────────────────────────────
+
+    async def _is_enrolled_cached(self, student_id: int, course_id: int) -> bool:
+        """Check enrollment with cache. Used internally."""
+        cache_key = f"course:enrolled:{student_id}:{course_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached  # True or False
+
+        is_enrolled = await self.enrollment_repo.is_enrolled(student_id, course_id)
+        await cache_set(cache_key, is_enrolled, ttl=ENROLLMENT_FLAG_TTL)
+        return is_enrolled
+
+    async def _get_enrollment_count_cached(self, course_id: int) -> int:
+        """Get enrollment count with cache. Used for limit checks and display."""
+        cache_key = f"course:enrollment_count:{course_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        count = await self.enrollment_repo.count_by_course(course_id)
+        await cache_set(cache_key, count, ttl=ENROLLMENT_COUNT_TTL)
+        return count
+
+    # ── READS ─────────────────────────────────────────────────────
+
     async def enroll_student(self, student_id: int, data: EnrollmentCreate) -> Enrollment:
         """Enroll a student in a course."""
         # Check course exists and is published
@@ -25,14 +57,14 @@ class EnrollmentService:
         if course.status != "published":
             raise ValueError("Course is not available for enrollment")
 
-        # Check max_students limit
+        # Check max_students limit (uses cached count)
         if course.max_students:
-            current_count = await self.enrollment_repo.count_by_course(data.course_id)
+            current_count = await self._get_enrollment_count_cached(data.course_id)
             if current_count >= course.max_students:
                 raise ValueError("Course enrollment limit reached")
 
-        # Check not already enrolled
-        if await self.enrollment_repo.is_enrolled(student_id, data.course_id):
+        # Check not already enrolled (uses cached flag)
+        if await self._is_enrolled_cached(student_id, data.course_id):
             raise ValueError("Already enrolled in this course")
 
         enrollment_data = {
@@ -43,32 +75,44 @@ class EnrollmentService:
             "payment_status": "completed" if data.payment_amount else None,
             "enrollment_source": data.enrollment_source,
         }
-        return await self.enrollment_repo.create(enrollment_data)
+        enrollment = await self.enrollment_repo.create(enrollment_data)
+
+        # Invalidate enrollment caches
+        await cache_set(
+            f"course:enrolled:{student_id}:{data.course_id}", True, ttl=ENROLLMENT_FLAG_TTL
+        )
+        await cache_delete(f"course:enrollment_count:{data.course_id}")
+
+        return enrollment
 
     async def get_enrollment(self, enrollment_id: int) -> Enrollment | None:
-        """Get a single enrollment by ID."""
+        """Get a single enrollment by ID. No cache — low frequency, user-specific."""
         return await self.enrollment_repo.get_by_id(enrollment_id)
 
     async def get_student_enrollments(
         self, student_id: int, skip: int = 0, limit: int = 100
     ):
-        """List all enrollments for a student."""
-        enrollments = await self.enrollment_repo.get_by_student(student_id, skip=skip, limit=limit)
+        """List all enrollments for a student. No cache — user-specific."""
+        enrollments = await self.enrollment_repo.get_by_student(
+            student_id, skip=skip, limit=limit
+        )
         total = await self.enrollment_repo.count_by_student(student_id)
         return enrollments, total
 
     async def get_course_enrollments(
         self, course_id: int, skip: int = 0, limit: int = 100
     ):
-        """List all enrollments for a course (instructor view)."""
-        enrollments = await self.enrollment_repo.get_by_course(course_id, skip=skip, limit=limit)
+        """List all enrollments for a course (instructor view). No cache."""
+        enrollments = await self.enrollment_repo.get_by_course(
+            course_id, skip=skip, limit=limit
+        )
         total = await self.enrollment_repo.count_by_course(course_id)
         return enrollments, total
 
     async def update_progress(
         self, enrollment_id: int, student_id: int, data: ProgressUpdate
     ) -> Enrollment | None:
-        """Update student progress on a course."""
+        """Update student progress on a course. No cache — frequent writes."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
         if not enrollment:
             return None
@@ -109,14 +153,18 @@ class EnrollmentService:
             update_data["started_at"] = datetime.utcnow()
 
         # Auto-complete if 100%
-        pct = update_data.get("completion_percentage", float(enrollment.completion_percentage))
+        pct = update_data.get(
+            "completion_percentage", float(enrollment.completion_percentage)
+        )
         if pct >= 100 and enrollment.status == "active":
             update_data["status"] = "completed"
             update_data["completed_at"] = datetime.utcnow()
 
         return await self.enrollment_repo.update(enrollment_id, update_data)
 
-    async def drop_enrollment(self, enrollment_id: int, student_id: int) -> Enrollment | None:
+    async def drop_enrollment(
+        self, enrollment_id: int, student_id: int
+    ) -> Enrollment | None:
         """Student drops a course."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
         if not enrollment:
@@ -124,7 +172,16 @@ class EnrollmentService:
         if enrollment.student_id != student_id:
             raise PermissionError("This is not your enrollment")
 
-        return await self.enrollment_repo.update(enrollment_id, {
-            "status": "dropped",
-            "dropped_at": datetime.utcnow(),
-        })
+        result = await self.enrollment_repo.update(
+            enrollment_id,
+            {
+                "status": "dropped",
+                "dropped_at": datetime.utcnow(),
+            },
+        )
+
+        # Invalidate enrollment caches
+        await cache_delete(f"course:enrolled:{student_id}:{enrollment.course_id}")
+        await cache_delete(f"course:enrollment_count:{enrollment.course_id}")
+
+        return result
