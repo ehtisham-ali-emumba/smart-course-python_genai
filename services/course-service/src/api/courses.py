@@ -25,7 +25,7 @@ async def create_course(
     service = CourseService(db)
     try:
         course = await service.create_course(data, instructor_id)
-        return CourseResponse.model_validate(course)
+        return CourseResponse(**course)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -38,16 +38,9 @@ async def list_published_courses(
 ):
     """List all published courses (any authenticated user)."""
     service = CourseService(db)
-    courses, total = await service.list_published_courses(skip=skip, limit=limit)
-
-    # Handle both SQLAlchemy objects (cache miss) and dicts (cache hit)
-    if courses and isinstance(courses[0], dict):
-        items = [CourseResponse(**c) for c in courses]
-    else:
-        items = [CourseResponse.model_validate(c) for c in courses]
-
+    items, total = await service.list_published_courses(skip=skip, limit=limit)
     return CourseListResponse(
-        items=items,
+        items=[CourseResponse(**c) for c in items],
         total=total,
         skip=skip,
         limit=limit,
@@ -63,9 +56,11 @@ async def list_my_courses(
 ):
     """List courses created by the current instructor."""
     service = CourseService(db)
-    courses, total = await service.list_instructor_courses(instructor_id, skip=skip, limit=limit)
+    items, total = await service.list_instructor_courses(
+        instructor_id, skip=skip, limit=limit
+    )
     return CourseListResponse(
-        items=[CourseResponse.model_validate(c) for c in courses],
+        items=[CourseResponse(**c) for c in items],
         total=total,
         skip=skip,
         limit=limit,
@@ -82,11 +77,7 @@ async def get_course(
     course = await service.get_course(course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-
-    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
-    if isinstance(course, dict):
-        return CourseResponse(**course)
-    return CourseResponse.model_validate(course)
+    return CourseResponse(**course)
 
 
 @router.put("/{course_id}", response_model=CourseResponse)
@@ -102,7 +93,7 @@ async def update_course(
         course = await service.update_course(course_id, data, instructor_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-        return CourseResponse.model_validate(course)
+        return CourseResponse(**course)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
@@ -120,7 +111,7 @@ async def update_course_status(
         course = await service.update_status(course_id, data, instructor_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-        return CourseResponse.model_validate(course)
+        return CourseResponse(**course)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 

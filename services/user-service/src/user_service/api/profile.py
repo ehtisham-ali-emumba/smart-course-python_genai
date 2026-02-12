@@ -32,10 +32,7 @@ async def get_profile(
             detail="User not found",
         )
 
-    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
-    if isinstance(user, dict):
-        return UserResponse(**user)
-    return UserResponse.model_validate(user)
+    return UserResponse(**user)
 
 
 @router.put("/", response_model=UserResponse)
@@ -62,4 +59,4 @@ async def update_profile(
             detail="User not found",
         )
 
-    return UserResponse.model_validate(user)
+    return UserResponse(**user)

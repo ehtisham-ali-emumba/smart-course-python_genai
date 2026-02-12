@@ -11,15 +11,24 @@ from user_service.schemas.user import UserResponse, UserUpdate
 USER_PROFILE_TTL = 900  # 15 minutes
 
 
+def _user_to_dict(user: User) -> dict:
+    """Convert User ORM to dict for consistent API/response use."""
+    return UserResponse.model_validate(user).model_dump(mode="json")
+
+
 class UserService:
-    """User service for user operations."""
+    """User service for user operations.
+
+    All read methods return dict (not ORM) so the API layer can always use
+    UserResponse(**data) with no isinstance checks. Cache logic is in the service.
+    """
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.user_repo = UserRepository(db)
 
-    async def get_user(self, user_id: int) -> Optional[User] | Optional[dict]:
-        """Get user by ID — with cache."""
+    async def get_user(self, user_id: int) -> dict | None:
+        """Get user by ID — with cache. Always returns dict or None."""
         # 1. Try cache
         cache_key = f"user:profile:{user_id}"
         cached = await cache_get(cache_key)
@@ -29,24 +38,26 @@ class UserService:
         # 2. Fallback to DB
         user = await self.user_repo.get_by_id(user_id)
 
-        # 3. Store in cache
+        # 3. Store in cache and return normalized dict
         if user:
-            user_dict = UserResponse.model_validate(user).model_dump(mode="json")
+            user_dict = _user_to_dict(user)
             await cache_set(cache_key, user_dict, ttl=USER_PROFILE_TTL)
+            return user_dict
 
-        return user
+        return None
 
     async def update_user(
         self, user_id: int, user_data: UserUpdate
-    ) -> Optional[User]:
-        """Update user information — invalidate cache."""
+    ) -> dict | None:
+        """Update user information — invalidate cache. Returns dict or None."""
         update_data = user_data.model_dump(exclude_unset=True)
         result = await self.user_repo.update(user_id, update_data)
 
         if result:
             await cache_delete(f"user:profile:{user_id}")
+            return _user_to_dict(result)
 
-        return result
+        return None
 
     async def list_users(self, skip: int = 0, limit: int = 100):
         """List all users with pagination."""

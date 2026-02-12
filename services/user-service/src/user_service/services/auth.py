@@ -69,7 +69,7 @@ class AuthService:
 
         return user
 
-    async def get_user_by_id(self, user_id: int) -> User | dict | None:
-        """Get user by ID (uses cached UserService for consistency)."""
+    async def get_user_by_id(self, user_id: int) -> dict | None:
+        """Get user by ID (uses cached UserService). Always returns dict or None."""
         user_service = UserService(self.db)
         return await user_service.get_user(user_id)

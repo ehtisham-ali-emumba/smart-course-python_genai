@@ -137,6 +137,8 @@ PostgreSQL  MongoDB
 - Repositories stay clean — pure database access, no cache concerns
 - Routes stay clean — just request/response handling
 
+**Return type normalization (important):** The service layer always returns the same type (e.g. `dict`) for both cache hit and cache miss. The service converts ORM objects to dict before returning, so the API layer can always do `CourseResponse(**data)` with no `isinstance` checks or branching. All Redis/cache logic stays inside the service.
+
 ### 3.2 Redis Database Allocation
 
 A single Redis instance supports 16 logical databases (db 0–15). Use separate databases per service for clean isolation:
@@ -635,157 +637,107 @@ async def health_check():
 
 ### 6.8 `services/course-service/src/services/course.py` — Add Caching
 
-This is the most important file. Adding cache to **3 read paths** and invalidation to **3 write paths**.
+This is the most important file. All cache logic lives here. **The service always returns `dict` (or `list[dict]`) so the API layer never needs `isinstance` checks** — it can always do `CourseResponse(**data)`.
+
+Key pattern:
+- `get_course` → `dict | None` (never ORM; on miss, convert before returning)
+- `list_published_courses` → `tuple[list[dict], int]` (always dicts)
+- `list_instructor_courses` → `tuple[list[dict], int]` (for consistent API handling)
+- Write methods (`create_course`, `update_course`, `update_status`) also return `dict` for uniformity
 
 ```python
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache import cache_get, cache_set, cache_delete, cache_delete_pattern
+from core.cache import cache_delete, cache_delete_pattern, cache_get, cache_set
 from models.course import Course
 from repositories.course import CourseRepository
-from schemas.course import CourseCreate, CourseUpdate, CourseStatusUpdate
+from schemas.course import CourseCreate, CourseResponse, CourseStatusUpdate, CourseUpdate
 
 
-# ── TTL Constants ─────────────────────────────────────────────────
-COURSE_DETAIL_TTL = 600       # 10 minutes
-COURSE_LIST_TTL = 300         # 5 minutes
+COURSE_DETAIL_TTL = 600   # 10 minutes
+COURSE_LIST_TTL = 300     # 5 minutes
+
+
+def _course_to_dict(course: Course) -> dict:
+    """Convert Course ORM to dict for consistent API/response use."""
+    return CourseResponse.model_validate(course).model_dump(mode="json")
 
 
 class CourseService:
-    """Business logic for course operations."""
+    """Business logic for course operations.
+
+    All read methods return dicts (not ORM objects) so the API layer
+    can always use CourseResponse(**data) with no isinstance branching.
+    """
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.course_repo = CourseRepository(db)
 
-    # ── READS (with cache) ────────────────────────────────────────
-
-    async def get_course(self, course_id: int) -> Optional[Course]:
-        """Get a single course by ID (excludes soft-deleted)."""
-        # 1. Try cache
+    async def get_course(self, course_id: int) -> dict | None:
+        """Always returns dict or None — never ORM. Cache handled internally."""
         cache_key = f"course:detail:{course_id}"
         cached = await cache_get(cache_key)
         if cached is not None:
             return cached
 
-        # 2. Fallback to DB
         course = await self.course_repo.get_by_id(course_id)
         if course and course.is_deleted:
             return None
 
-        # 3. Store in cache (serialize SQLAlchemy object to dict)
         if course:
-            from schemas.course import CourseResponse
-            course_dict = CourseResponse.model_validate(course).model_dump(mode="json")
+            course_dict = _course_to_dict(course)
             await cache_set(cache_key, course_dict, ttl=COURSE_DETAIL_TTL)
+            return course_dict
+        return None
 
-        return course
-
-    async def get_course_by_slug(self, slug: str) -> Optional[Course]:
-        """Get a course by its URL slug. No cache — slug lookups are rare."""
-        return await self.course_repo.get_by_slug(slug)
-
-    async def list_published_courses(self, skip: int = 0, limit: int = 100):
-        """List published courses for browsing."""
-        # 1. Try cache
+    async def list_published_courses(self, skip: int = 0, limit: int = 100) -> tuple[list[dict], int]:
+        """Always returns (list[dict], total). Cache handled internally."""
         cache_key = f"course:published:p:{skip}:l:{limit}"
         cached = await cache_get(cache_key)
         if cached is not None:
             return cached["items"], cached["total"]
 
-        # 2. Fallback to DB
         courses = await self.course_repo.get_published(skip=skip, limit=limit)
         total = await self.course_repo.count_published()
-
-        # 3. Store in cache
-        from schemas.course import CourseResponse
-        items = [CourseResponse.model_validate(c).model_dump(mode="json") for c in courses]
+        items = [_course_to_dict(c) for c in courses]
         await cache_set(cache_key, {"items": items, "total": total}, ttl=COURSE_LIST_TTL)
-
-        return courses, total
+        return items, total
 
     async def list_instructor_courses(
         self, instructor_id: int, skip: int = 0, limit: int = 100
-    ):
-        """List all courses by an instructor. No cache — instructor-specific, low reuse."""
+    ) -> tuple[list[dict], int]:
+        """No cache — instructor-specific. Returns (list[dict], total) for consistency."""
         courses = await self.course_repo.get_by_instructor(instructor_id, skip=skip, limit=limit)
         total = await self.course_repo.count_by_instructor(instructor_id)
-        return courses, total
+        return [_course_to_dict(c) for c in courses], total
 
-    # ── WRITES (with cache invalidation) ──────────────────────────
-
-    async def create_course(self, data: CourseCreate, instructor_id: int) -> Course:
-        """Create a new course. No cache invalidation needed — new courses are drafts."""
-        if await self.course_repo.slug_exists(data.slug):
-            raise ValueError(f"Slug '{data.slug}' is already taken")
-
-        course_data = data.model_dump()
-        course_data["instructor_id"] = instructor_id
-        course_data["status"] = "draft"
-        return await self.course_repo.create(course_data)
+    async def create_course(self, data: CourseCreate, instructor_id: int) -> dict:
+        # ... (create logic) ...
+        course = await self.course_repo.create(course_data)
+        return _course_to_dict(course)
 
     async def update_course(
         self, course_id: int, data: CourseUpdate, instructor_id: int
-    ) -> Optional[Course]:
-        """Update course details. Invalidates detail and list caches."""
-        course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
-            return None
-        if course.instructor_id != instructor_id:
-            raise PermissionError("You do not own this course")
-
-        update_data = data.model_dump(exclude_unset=True)
+    ) -> dict | None:
+        # ... (update logic) ...
         result = await self.course_repo.update(course_id, update_data)
-
-        # Invalidate caches
-        await cache_delete(f"course:detail:{course_id}")
-        await cache_delete_pattern("course:published:*")    # Any listing page could include this course
-
-        return result
-
-    async def update_status(
-        self, course_id: int, data: CourseStatusUpdate, instructor_id: int
-    ) -> Optional[Course]:
-        """Change course status. Invalidates all course caches."""
-        course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
-            return None
-        if course.instructor_id != instructor_id:
-            raise PermissionError("You do not own this course")
-
-        update_data = {"status": data.status}
-        if data.status == "published" and course.status != "published":
-            update_data["published_at"] = datetime.utcnow()
-
-        result = await self.course_repo.update(course_id, update_data)
-
-        # Invalidate caches — status change affects listings
         await cache_delete(f"course:detail:{course_id}")
         await cache_delete_pattern("course:published:*")
+        return _course_to_dict(result) if result else None
 
-        return result
+    async def update_status(...) -> dict | None:
+        # ... (invalidation + return dict) ...
 
     async def delete_course(self, course_id: int, instructor_id: int) -> bool:
-        """Soft-delete a course. Invalidates all course caches."""
-        course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
-            return False
-        if course.instructor_id != instructor_id:
-            raise PermissionError("You do not own this course")
-
-        await self.course_repo.soft_delete(course_id)
-
-        # Invalidate caches
-        await cache_delete(f"course:detail:{course_id}")
-        await cache_delete_pattern("course:published:*")
-
-        return True
+        # ... (invalidation) ...
 ```
 
-**Important note about `list_published_courses` cache return:** When the cache is hit, it returns dicts (not SQLAlchemy objects). The API route must handle both cases. See Section 6.10 for the route adjustment.
+No API-layer branching: the service normalizes the return type at the service layer.
 
 ### 6.9 `services/course-service/src/services/course_content.py` — Add Caching
 
@@ -1075,61 +1027,17 @@ class EnrollmentService:
         return result
 ```
 
-### 6.11 `services/course-service/src/api/courses.py` — Handle Cached List Returns
+### 6.11 `services/course-service/src/api/courses.py` — Clean API Layer
 
-The `list_published_courses` cache returns dicts instead of SQLAlchemy objects. Update the route to handle both cases:
+The API layer stays simple: **no `isinstance` checks**. The service always returns `dict` or `list[dict]`, so the API always uses `CourseResponse(**data)`:
 
 ```python
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.database import get_db
-from api.dependencies import get_current_user_id, require_instructor
-from schemas.course import (
-    CourseCreate,
-    CourseUpdate,
-    CourseStatusUpdate,
-    CourseResponse,
-    CourseListResponse,
-)
-from services.course import CourseService
-
-router = APIRouter()
-
-
-@router.post("/", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
-async def create_course(
-    data: CourseCreate,
-    instructor_id: int = Depends(require_instructor),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a new course (instructors only)."""
-    service = CourseService(db)
-    try:
-        course = await service.create_course(data, instructor_id)
-        return CourseResponse.model_validate(course)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-
 @router.get("/", response_model=CourseListResponse)
-async def list_published_courses(
-    skip: int = 0,
-    limit: int = 20,
-    db: AsyncSession = Depends(get_db),
-):
-    """List all published courses (any authenticated user)."""
+async def list_published_courses(...):
     service = CourseService(db)
-    courses, total = await service.list_published_courses(skip=skip, limit=limit)
-
-    # Handle both SQLAlchemy objects (cache miss) and dicts (cache hit)
-    if courses and isinstance(courses[0], dict):
-        items = [CourseResponse(**c) for c in courses]
-    else:
-        items = [CourseResponse.model_validate(c) for c in courses]
-
+    items, total = await service.list_published_courses(skip=skip, limit=limit)
     return CourseListResponse(
-        items=items,
+        items=[CourseResponse(**c) for c in items],
         total=total,
         skip=skip,
         limit=limit,
@@ -1137,17 +1045,11 @@ async def list_published_courses(
 
 
 @router.get("/my-courses", response_model=CourseListResponse)
-async def list_my_courses(
-    skip: int = 0,
-    limit: int = 20,
-    instructor_id: int = Depends(require_instructor),
-    db: AsyncSession = Depends(get_db),
-):
-    """List courses created by the current instructor."""
+async def list_my_courses(...):
     service = CourseService(db)
-    courses, total = await service.list_instructor_courses(instructor_id, skip=skip, limit=limit)
+    items, total = await service.list_instructor_courses(instructor_id, skip=skip, limit=limit)
     return CourseListResponse(
-        items=[CourseResponse.model_validate(c) for c in courses],
+        items=[CourseResponse(**c) for c in items],
         total=total,
         skip=skip,
         limit=limit,
@@ -1155,54 +1057,34 @@ async def list_my_courses(
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
-async def get_course(
-    course_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    """Get a single course by ID."""
+async def get_course(...):
     service = CourseService(db)
     course = await service.get_course(course_id)
     if not course:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-
-    # Handle both SQLAlchemy object (cache miss) and dict (cache hit)
-    if isinstance(course, dict):
-        return CourseResponse(**course)
-    return CourseResponse.model_validate(course)
+    return CourseResponse(**course)
 
 
 @router.put("/{course_id}", response_model=CourseResponse)
-async def update_course(
-    course_id: int,
-    data: CourseUpdate,
-    instructor_id: int = Depends(require_instructor),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update a course (owning instructor only)."""
+async def update_course(...):
     service = CourseService(db)
     try:
         course = await service.update_course(course_id, data, instructor_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-        return CourseResponse.model_validate(course)
+        return CourseResponse(**course)   # service returns dict
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @router.patch("/{course_id}/status", response_model=CourseResponse)
-async def update_course_status(
-    course_id: int,
-    data: CourseStatusUpdate,
-    instructor_id: int = Depends(require_instructor),
-    db: AsyncSession = Depends(get_db),
-):
-    """Change course status — publish, archive, etc. (owning instructor only)."""
+async def update_course_status(...):
     service = CourseService(db)
     try:
         course = await service.update_status(course_id, data, instructor_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-        return CourseResponse.model_validate(course)
+        return CourseResponse(**course)   # service returns dict
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
@@ -1300,78 +1182,41 @@ async def health_check():
     return {"status": "ok", "service": "user-service"}
 ```
 
-### 7.6 `services/user-service/src/user_service/services/user.py` — Add Caching
+### 7.6 `services/user-service/src/user_service/services/user.py` — Caching with Normalized Returns
 
-You need to add caching to the user profile and instructor profile reads, and invalidation on writes.
-
-**Read the existing file first**, then add cache logic to these methods:
+The UserService always returns `dict` (never ORM) so the API layer can use `UserResponse(**data)` with no `isinstance` checks. Same pattern as the course service.
 
 ```python
-from user_service.core.cache import cache_get, cache_set, cache_delete
+def _user_to_dict(user: User) -> dict:
+    """Convert User ORM to dict for consistent API use."""
+    return UserResponse.model_validate(user).model_dump(mode="json")
 
-# ── TTL Constants ─────────────────────────────────────────────────
-USER_PROFILE_TTL = 900           # 15 minutes
-INSTRUCTOR_PROFILE_TTL = 1800    # 30 minutes
+
+class UserService:
+    async def get_user(self, user_id: int) -> dict | None:
+        """Always returns dict or None. Cache handled internally."""
+        cache_key = f"user:profile:{user_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        user = await self.user_repo.get_by_id(user_id)
+        if user:
+            user_dict = _user_to_dict(user)
+            await cache_set(cache_key, user_dict, ttl=USER_PROFILE_TTL)
+            return user_dict
+        return None
+
+    async def update_user(self, user_id: int, user_data: UserUpdate) -> dict | None:
+        """Returns dict or None. Invalidates cache on update."""
+        result = await self.user_repo.update(user_id, ...)
+        if result:
+            await cache_delete(f"user:profile:{user_id}")
+            return _user_to_dict(result)
+        return None
 ```
 
-**Methods to add caching to:**
-
-```python
-async def get_user_by_id(self, user_id: int):
-    """Get user by ID — with cache."""
-    # 1. Try cache
-    cache_key = f"user:profile:{user_id}"
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    # 2. Fallback to DB
-    user = await self.user_repo.get_by_id(user_id)
-
-    # 3. Store in cache
-    if user:
-        from user_service.schemas.user import UserResponse
-        user_dict = UserResponse.model_validate(user).model_dump(mode="json")
-        await cache_set(cache_key, user_dict, ttl=USER_PROFILE_TTL)
-
-    return user
-```
-
-**Methods to add invalidation to:**
-
-```python
-async def update_user(self, user_id: int, data) -> ...:
-    """Update user profile — invalidate cache."""
-    result = await self.user_repo.update(user_id, ...)
-    await cache_delete(f"user:profile:{user_id}")
-    return result
-```
-
-**Instructor profile caching** — if there's a `get_instructor_profile` method:
-
-```python
-async def get_instructor_profile(self, user_id: int):
-    """Get instructor profile — with cache."""
-    cache_key = f"user:instructor:{user_id}"
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    profile = await self.instructor_repo.get_by_user_id(user_id)
-    if profile:
-        # Serialize and cache
-        profile_dict = InstructorResponse.model_validate(profile).model_dump(mode="json")
-        await cache_set(cache_key, profile_dict, ttl=INSTRUCTOR_PROFILE_TTL)
-
-    return profile
-```
-
-> **Note to implementor:** The user-service has existing service methods in `services/user.py` and `services/auth.py`. Read each method and decide:
-> - `get_user_by_id` → ADD cache
-> - `update_user`/`update_profile` → ADD invalidation for `user:profile:{id}`
-> - `get_instructor_profile` → ADD cache
-> - `update_instructor_profile` → ADD invalidation for `user:instructor:{id}`
-> - `register`, `login`, `refresh_token` → NO cache (auth flows should always hit DB)
+**API layer (`api/profile.py`, `api/auth.py`):** No `isinstance` checks — always `UserResponse(**user)`.
 
 ---
 
@@ -1586,14 +1431,14 @@ If you want to apply the memory policy now, update the `redis` service:
 - [ ] `src/services/course.py` → Cache added to `get_course`, `list_published_courses`; invalidation added to `update_course`, `update_status`, `delete_course`
 - [ ] `src/services/course_content.py` → Cache added to `get_content`; invalidation added to `create_or_update_content`, `add_module`, `add_lesson`, `delete_content`
 - [ ] `src/services/enrollment.py` → Enrollment flag cache and count cache added; invalidation on `enroll_student`, `drop_enrollment`
-- [ ] `src/api/courses.py` → Updated to handle both dict (cache hit) and ORM object (cache miss) responses
+- [ ] `src/api/courses.py` → Clean API: always `CourseResponse(**data)` — no isinstance checks (service normalizes return type)
 
 ### User Service
 - [ ] `pyproject.toml` → `redis>=5.0.0` already exists (no changes)
 - [ ] `src/user_service/core/redis.py` → Created (Redis client management)
 - [ ] `src/user_service/core/cache.py` → Created (Cache utilities, updated import path)
 - [ ] `src/user_service/main.py` → `connect_redis` / `close_redis` added to lifespan
-- [ ] `src/user_service/services/user.py` → Cache added to `get_user_by_id`, `get_instructor_profile`; invalidation added to `update_user`, `update_instructor_profile`
+- [ ] `src/user_service/services/user.py` → Cache in `get_user`; invalidation in `update_user`; always return `dict` (no isinstance in API)
 
 ### Verification
 - [ ] `docker compose build` succeeds
