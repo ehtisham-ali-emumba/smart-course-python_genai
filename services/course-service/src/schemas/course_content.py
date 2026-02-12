@@ -76,3 +76,35 @@ class LessonCreate(BaseModel):
     order: int
     is_preview: bool = False
     resources: list[ResourceSchema] = []
+
+
+class ModuleUpdate(BaseModel):
+    """Schema for updating a module."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+
+class LessonUpdate(BaseModel):
+    """Schema for updating a lesson."""
+    title: Optional[str] = None
+    type: Optional[str] = Field(None, pattern=r"^(video|text|quiz|assignment)$")
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    order: Optional[int] = None
+    is_preview: Optional[bool] = None
+
+
+class MediaResourceCreate(BaseModel):
+    """Schema for adding media resources (video, pdf, audio, images)."""
+    name: str
+    url: str
+    type: str = Field(..., pattern=r"^(video|pdf|audio|image|link)$")
+
+
+class MediaResourceUpdate(BaseModel):
+    """Schema for updating a media resource."""
+    name: Optional[str] = None
+    url: Optional[str] = None
+    type: Optional[str] = Field(None, pattern=r"^(video|pdf|audio|image|link)$")

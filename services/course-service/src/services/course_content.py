@@ -6,7 +6,11 @@ from repositories.course_content import CourseContentRepository
 from schemas.course_content import (
     CourseContentCreate,
     LessonCreate,
+    LessonUpdate,
+    MediaResourceCreate,
+    MediaResourceUpdate,
     ModuleCreate,
+    ModuleUpdate,
 )
 
 
@@ -61,6 +65,63 @@ class CourseContentService:
         if doc:
             doc.pop("_id", None)
         return doc
+
+    async def update_module(
+        self, course_id: int, module_id: int, data: ModuleUpdate
+    ) -> dict[str, Any] | None:
+        """Update a module in the course content."""
+        update_data = data.model_dump(exclude_unset=True)
+        doc = await self.content_repo.update_module(course_id, module_id, update_data)
+        if doc:
+            doc.pop("_id", None)
+        return doc
+
+    async def update_lesson(
+        self, course_id: int, module_id: int, lesson_id: int, data: LessonUpdate
+    ) -> dict[str, Any] | None:
+        """Update a lesson in a module."""
+        update_data = data.model_dump(exclude_unset=True)
+        doc = await self.content_repo.update_lesson(course_id, module_id, lesson_id, update_data)
+        if doc:
+            doc.pop("_id", None)
+        return doc
+
+    async def add_resource(
+        self, course_id: int, module_id: int, lesson_id: int, data: MediaResourceCreate
+    ) -> dict[str, Any] | None:
+        """Add a media resource to a lesson."""
+        resource_data = data.model_dump()
+        doc = await self.content_repo.add_resource_to_lesson(
+            course_id, module_id, lesson_id, resource_data
+        )
+        if doc:
+            doc.pop("_id", None)
+        return doc
+
+    async def update_resource(
+        self,
+        course_id: int,
+        module_id: int,
+        lesson_id: int,
+        resource_index: int,
+        data: MediaResourceUpdate,
+    ) -> dict[str, Any] | None:
+        """Update a media resource in a lesson."""
+        update_data = data.model_dump(exclude_unset=True)
+        doc = await self.content_repo.update_resource_in_lesson(
+            course_id, module_id, lesson_id, resource_index, update_data
+        )
+        if doc:
+            doc.pop("_id", None)
+        return doc
+
+    async def delete_resource(
+        self, course_id: int, module_id: int, lesson_id: int, resource_index: int
+    ) -> bool:
+        """Delete a media resource from a lesson."""
+        return await self.content_repo.delete_resource_from_lesson(
+            course_id, module_id, lesson_id, resource_index
+        )
 
     async def delete_content(self, course_id: int) -> bool:
         """Delete all content for a course."""
