@@ -35,6 +35,25 @@ services:
     networks:
       - smartcourse-network
 
+  mongodb:
+    image: mongo:7-jammy
+    container_name: smartcourse-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-smartcourse}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-smartcourse_secret}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-smartcourse}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartcourse-network
+
   user-service:
     build:
       context: ./services/user-service
@@ -52,6 +71,24 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  course-service:
+    build:
+      context: ./services/course-service
+      dockerfile: Dockerfile
+    container_name: smartcourse-course-service
+    # No ports exposed to host — only accessible through API Gateway
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-smartcourse}:${POSTGRES_PASSWORD:-smartcourse_secret}@postgres:5432/${POSTGRES_DB:-smartcourse}
+      - MONGODB_URL=mongodb://${MONGO_USER:-smartcourse}:${MONGO_PASSWORD:-smartcourse_secret}@mongodb:27017/${MONGO_DB:-smartcourse}?authSource=admin
+      - MONGODB_DB_NAME=${MONGO_DB:-smartcourse}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     networks:
       - smartcourse-network
@@ -89,9 +126,7 @@ services:
     depends_on:
       - auth-sidecar
       - user-service
-      # FUTURE: Add other services here as they come online
-      # - course-service
-      # - notification-service
+      - course-service
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
       interval: 15s
@@ -107,3 +142,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  mongodb_data:
