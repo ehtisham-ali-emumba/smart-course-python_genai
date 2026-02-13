@@ -99,6 +99,19 @@ services:
     networks:
       - smartcourse-network
 
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: smartcourse-notification-service
+    # No ports exposed to host — only accessible through API Gateway
+    environment:
+      - SERVICE_NAME=notification-service
+      - SERVICE_PORT=8005
+      - LOG_LEVEL=INFO
+    networks:
+      - smartcourse-network
+
   # ═══════════════════════════════════════════════════════════════
   #  AUTH SIDECAR — JWT verification (Python/FastAPI)
   # ═══════════════════════════════════════════════════════════════
@@ -133,6 +146,7 @@ services:
       - auth-sidecar
       - user-service
       - course-service
+      - notification-service
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
       interval: 15s

@@ -1,0 +1,1 @@
+"""SmartCourse Notification Service."""
