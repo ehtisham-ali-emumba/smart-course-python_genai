@@ -31,6 +31,7 @@ class CourseProgressSummary(BaseModel):
 
     course_id: int
     user_id: int
+    enrollment_id: int
     total_items: int
     completed_items: int
     completion_percentage: Decimal

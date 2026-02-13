@@ -42,3 +42,12 @@ def require_instructor(request: Request) -> int:
             detail="Instructor role required",
         )
     return user_id
+
+
+def get_authenticated_user(request: Request) -> tuple[int, str]:
+    """
+    Require any authenticated user. Returns (user_id, role).
+    """
+    user_id = get_current_user_id(request)
+    role = get_current_user_role(request)
+    return user_id, role

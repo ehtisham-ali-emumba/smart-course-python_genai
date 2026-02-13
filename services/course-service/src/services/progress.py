@@ -95,6 +95,7 @@ class ProgressService:
         return CourseProgressSummary(
             course_id=course_id,
             user_id=user_id,
+            enrollment_id=enrollment.id,
             total_items=total_items,
             completed_items=completed_count,
             completion_percentage=percentage,

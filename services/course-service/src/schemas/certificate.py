@@ -38,3 +38,11 @@ class CertificateVerifyResponse(BaseModel):
     issue_date: Optional[date] = None
     grade: Optional[str] = None
     is_revoked: bool = False
+
+
+class CertificateListResponse(BaseModel):
+    """Schema for listing certificates."""
+    items: list[CertificateResponse]
+    total: int
+    skip: int
+    limit: int

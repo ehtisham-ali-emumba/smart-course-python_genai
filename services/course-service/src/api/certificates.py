@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import require_instructor
+from api.dependencies import get_authenticated_user
 from core.database import get_db
 from schemas.certificate import (
     CertificateCreate,
+    CertificateListResponse,
     CertificateResponse,
     CertificateVerifyResponse,
 )
@@ -16,16 +17,58 @@ router = APIRouter()
 @router.post("/", response_model=CertificateResponse, status_code=status.HTTP_201_CREATED)
 async def issue_certificate(
     data: CertificateCreate,
-    instructor_id: int = Depends(require_instructor),
+    user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Issue a certificate for a completed enrollment (instructors only)."""
+    """
+    Request/issue a certificate for a completed enrollment.
+    - Students: call this when all modules are complete; backend verifies completion and issues cert.
+    - Instructors: can issue for any completed enrollment.
+    """
+    user_id, role = user
     service = CertificateService(db)
     try:
-        cert = await service.issue_certificate(data, instructor_id)
+        cert = await service.issue_certificate(data, user_id, role)
         return CertificateResponse.model_validate(cert)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/my", response_model=CertificateListResponse)
+async def list_my_certificates(
+    skip: int = 0,
+    limit: int = 50,
+    user: tuple[int, str] = Depends(get_authenticated_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all certificates for the current user."""
+    user_id, role = user
+    service = CertificateService(db)
+    certs, total = await service.get_certificates_for_user(user_id, role, skip=skip, limit=limit)
+    return CertificateListResponse(
+        items=[CertificateResponse.model_validate(c) for c in certs],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/enrollment/{enrollment_id}", response_model=CertificateResponse)
+async def get_certificate_by_enrollment(
+    enrollment_id: int,
+    user: tuple[int, str] = Depends(get_authenticated_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get certificate for a specific enrollment. Students can only access their own."""
+    user_id, role = user
+    service = CertificateService(db)
+    try:
+        cert = await service.get_certificate_by_enrollment(enrollment_id, user_id, role)
+        return CertificateResponse.model_validate(cert)
+    except ValueError as e:
+        if "not found" in str(e).lower() or "no certificate" in str(e).lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @router.get("/verify/{verification_code}", response_model=CertificateVerifyResponse)
