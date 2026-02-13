@@ -81,8 +81,7 @@ services:
       dockerfile: Dockerfile
     container_name: smartcourse-course-service
     volumes:
-      # Mount scripts and alembic versions for migrations (avoids rebuild)
-      - ./services/course-service/scripts:/app/scripts:ro
+      # Mount src for live code changes (avoids rebuild)
       - ./services/course-service/src:/app/src:ro
     # No ports exposed to host — only accessible through API Gateway
     environment:
