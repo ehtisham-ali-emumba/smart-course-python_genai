@@ -7,7 +7,6 @@ from schemas.enrollment import (
     EnrollmentCreate,
     EnrollmentListResponse,
     EnrollmentResponse,
-    ProgressUpdate,
 )
 from services.enrollment import EnrollmentService
 
@@ -63,26 +62,6 @@ async def get_enrollment(
     return EnrollmentResponse.model_validate(enrollment)
 
 
-@router.patch("/{enrollment_id}/progress", response_model=EnrollmentResponse)
-async def update_progress(
-    enrollment_id: int,
-    data: ProgressUpdate,
-    user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """Update progress on an enrollment (mark lessons/modules complete)."""
-    service = EnrollmentService(db)
-    try:
-        enrollment = await service.update_progress(enrollment_id, user_id, data)
-        if not enrollment:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
-            )
-        return EnrollmentResponse.model_validate(enrollment)
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-
-
 @router.patch("/{enrollment_id}/drop", response_model=EnrollmentResponse)
 async def drop_enrollment(
     enrollment_id: int,
@@ -100,3 +79,24 @@ async def drop_enrollment(
         return EnrollmentResponse.model_validate(enrollment)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.patch("/{enrollment_id}/undrop", response_model=EnrollmentResponse)
+async def undrop_enrollment(
+    enrollment_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-enroll in a course after dropping."""
+    service = EnrollmentService(db)
+    try:
+        enrollment = await service.undrop_enrollment(enrollment_id, user_id)
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
+            )
+        return EnrollmentResponse.model_validate(enrollment)
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

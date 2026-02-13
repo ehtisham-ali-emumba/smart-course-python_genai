@@ -13,7 +13,7 @@ from config import settings
 from core.database import Base
 
 # Import ALL models so they register with Base.metadata
-from models import Certificate, Course, Enrollment  # noqa: F401
+from models import Certificate, Course, Enrollment, Progress  # noqa: F401
 
 # Alembic Config object
 config = context.config
@@ -26,7 +26,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Course-service owns only these tables; exclude user-service tables from autogenerate
-COURSE_SERVICE_TABLES = {"courses", "enrollments", "certificates", "alembic_version_course"}
+COURSE_SERVICE_TABLES = {"courses", "enrollments", "certificates", "progress", "alembic_version_course"}
 
 
 def include_object(object, name, type_, reflected, compare_to):

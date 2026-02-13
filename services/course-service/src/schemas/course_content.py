@@ -1,35 +1,45 @@
 from datetime import datetime
 from typing import Optional
 
+from bson import ObjectId
 from pydantic import BaseModel, Field
+
+
+def generate_object_id() -> str:
+    """Generate a new ObjectId as string."""
+    return str(ObjectId())
 
 
 class ResourceSchema(BaseModel):
     """A single resource attached to a lesson."""
+    resource_id: str = Field(default_factory=generate_object_id)
     name: str
     url: str
-    type: str  # pdf, video, link, etc.
+    type: str
+    is_active: bool = True
 
 
 class LessonSchema(BaseModel):
     """A single lesson within a module."""
-    lesson_id: int
+    lesson_id: str = Field(default_factory=generate_object_id)
     title: str
     type: str = Field(..., pattern=r"^(video|text|quiz|assignment)$")
     content: Optional[str] = None
     duration_minutes: Optional[int] = None
     order: int
     is_preview: bool = False
+    is_active: bool = True
     resources: list[ResourceSchema] = []
 
 
 class ModuleSchema(BaseModel):
     """A single module containing lessons."""
-    module_id: int
+    module_id: str = Field(default_factory=generate_object_id)
     title: str
     description: Optional[str] = None
     order: int
     is_published: bool = True
+    is_active: bool = True
     lessons: list[LessonSchema] = []
 
 
@@ -58,23 +68,25 @@ class CourseContentResponse(BaseModel):
 
 class ModuleCreate(BaseModel):
     """Schema for adding a single module."""
-    module_id: int
+    module_id: str = Field(default_factory=generate_object_id)
     title: str
     description: Optional[str] = None
     order: int
     is_published: bool = True
+    is_active: bool = True
     lessons: list[LessonSchema] = []
 
 
 class LessonCreate(BaseModel):
     """Schema for adding a single lesson to a module."""
-    lesson_id: int
+    lesson_id: str = Field(default_factory=generate_object_id)
     title: str
     type: str = Field(..., pattern=r"^(video|text|quiz|assignment)$")
     content: Optional[str] = None
     duration_minutes: Optional[int] = None
     order: int
     is_preview: bool = False
+    is_active: bool = True
     resources: list[ResourceSchema] = []
 
 
@@ -84,6 +96,7 @@ class ModuleUpdate(BaseModel):
     description: Optional[str] = None
     order: Optional[int] = None
     is_published: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 
 class LessonUpdate(BaseModel):
@@ -94,13 +107,16 @@ class LessonUpdate(BaseModel):
     duration_minutes: Optional[int] = None
     order: Optional[int] = None
     is_preview: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 
 class MediaResourceCreate(BaseModel):
-    """Schema for adding media resources (video, pdf, audio, images)."""
+    """Schema for adding media resources."""
+    resource_id: str = Field(default_factory=generate_object_id)
     name: str
     url: str
     type: str = Field(..., pattern=r"^(video|pdf|audio|image|link)$")
+    is_active: bool = True
 
 
 class MediaResourceUpdate(BaseModel):
@@ -108,3 +124,4 @@ class MediaResourceUpdate(BaseModel):
     name: Optional[str] = None
     url: Optional[str] = None
     type: Optional[str] = Field(None, pattern=r"^(video|pdf|audio|image|link)$")
+    is_active: Optional[bool] = None

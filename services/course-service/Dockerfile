@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     alembic>=1.13.0
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY alembic.ini ./
 
 # Install the package in editable mode

@@ -80,6 +80,10 @@ services:
       context: ./services/course-service
       dockerfile: Dockerfile
     container_name: smartcourse-course-service
+    volumes:
+      # Mount scripts and alembic versions for migrations (avoids rebuild)
+      - ./services/course-service/scripts:/app/scripts:ro
+      - ./services/course-service/src:/app/src:ro
     # No ports exposed to host — only accessible through API Gateway
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-smartcourse}:${POSTGRES_PASSWORD:-smartcourse_secret}@postgres:5432/${POSTGRES_DB:-smartcourse}

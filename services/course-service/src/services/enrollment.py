@@ -6,7 +6,7 @@ from core.cache import cache_delete, cache_get, cache_set
 from models.enrollment import Enrollment
 from repositories.course import CourseRepository
 from repositories.enrollment import EnrollmentRepository
-from schemas.enrollment import EnrollmentCreate, ProgressUpdate
+from schemas.enrollment import EnrollmentCreate
 
 
 # ── TTL Constants ─────────────────────────────────────────────────
@@ -109,59 +109,6 @@ class EnrollmentService:
         total = await self.enrollment_repo.count_by_course(course_id)
         return enrollments, total
 
-    async def update_progress(
-        self, enrollment_id: int, student_id: int, data: ProgressUpdate
-    ) -> Enrollment | None:
-        """Update student progress on a course. No cache — frequent writes."""
-        enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
-        if not enrollment:
-            return None
-        if enrollment.student_id != student_id:
-            raise PermissionError("This is not your enrollment")
-
-        update_data: dict = {"last_accessed_at": datetime.utcnow()}
-
-        # Mark lesson as completed
-        if data.lesson_id is not None:
-            completed = list(enrollment.completed_lessons or [])
-            if data.lesson_id not in completed:
-                completed.append(data.lesson_id)
-                update_data["completed_lessons"] = completed
-
-            # Recalculate completion percentage
-            total = enrollment.total_lessons
-            if total > 0:
-                update_data["completion_percentage"] = round(
-                    (len(completed) / total) * 100, 2
-                )
-
-        # Mark module as completed
-        if data.module_id is not None:
-            completed_mods = list(enrollment.completed_modules or [])
-            if data.module_id not in completed_mods:
-                completed_mods.append(data.module_id)
-                update_data["completed_modules"] = completed_mods
-
-        # Add time spent
-        if data.time_spent_minutes is not None:
-            update_data["time_spent_minutes"] = (
-                enrollment.time_spent_minutes + data.time_spent_minutes
-            )
-
-        # Set started_at on first progress update
-        if enrollment.started_at is None:
-            update_data["started_at"] = datetime.utcnow()
-
-        # Auto-complete if 100%
-        pct = update_data.get(
-            "completion_percentage", float(enrollment.completion_percentage)
-        )
-        if pct >= 100 and enrollment.status == "active":
-            update_data["status"] = "completed"
-            update_data["completed_at"] = datetime.utcnow()
-
-        return await self.enrollment_repo.update(enrollment_id, update_data)
-
     async def drop_enrollment(
         self, enrollment_id: int, student_id: int
     ) -> Enrollment | None:
@@ -182,6 +129,42 @@ class EnrollmentService:
 
         # Invalidate enrollment caches
         await cache_delete(f"course:enrolled:{student_id}:{enrollment.course_id}")
+        await cache_delete(f"course:enrollment_count:{enrollment.course_id}")
+
+        return result
+
+    async def undrop_enrollment(
+        self, enrollment_id: int, student_id: int
+    ) -> Enrollment | None:
+        """Student re-enrolls after dropping (reactivates enrollment)."""
+        enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
+        if not enrollment:
+            return None
+        if enrollment.student_id != student_id:
+            raise PermissionError("This is not your enrollment")
+        if enrollment.status != "dropped":
+            raise ValueError("Enrollment is not dropped")
+
+        course = await self.course_repo.get_by_id(enrollment.course_id)
+        if not course or course.is_deleted:
+            raise ValueError("Course not found")
+        if course.status != "published":
+            raise ValueError("Course is not available for enrollment")
+        if course.max_students:
+            current_count = await self._get_enrollment_count_cached(enrollment.course_id)
+            if current_count >= course.max_students:
+                raise ValueError("Course enrollment limit reached")
+
+        result = await self.enrollment_repo.update(
+            enrollment_id,
+            {"status": "active", "dropped_at": None},
+        )
+
+        await cache_set(
+            f"course:enrolled:{student_id}:{enrollment.course_id}",
+            True,
+            ttl=ENROLLMENT_FLAG_TTL,
+        )
         await cache_delete(f"course:enrollment_count:{enrollment.course_id}")
 
         return result

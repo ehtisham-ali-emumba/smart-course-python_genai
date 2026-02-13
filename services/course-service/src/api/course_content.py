@@ -71,7 +71,7 @@ async def add_module(
 )
 async def add_lesson(
     course_id: int,
-    module_id: int,
+    module_id: str,
     data: LessonCreate,
     instructor_id: int = Depends(require_instructor),
 ):
@@ -93,7 +93,7 @@ async def add_lesson(
 )
 async def update_module(
     course_id: int,
-    module_id: int,
+    module_id: str,
     data: ModuleUpdate,
     instructor_id: int = Depends(require_instructor),
 ):
@@ -109,14 +109,35 @@ async def update_module(
     return CourseContentResponse(**content)
 
 
+@router.delete(
+    "/{course_id}/content/modules/{module_id}",
+    response_model=CourseContentResponse,
+)
+async def delete_module(
+    course_id: int,
+    module_id: str,
+    instructor_id: int = Depends(require_instructor),
+):
+    """Soft-delete a module (set is_active=false) (instructors only)."""
+    db = get_mongodb()
+    service = CourseContentService(db)
+    content = await service.delete_module(course_id, module_id)
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course content or module not found",
+        )
+    return CourseContentResponse(**content)
+
+
 @router.patch(
     "/{course_id}/content/modules/{module_id}/lessons/{lesson_id}",
     response_model=CourseContentResponse,
 )
 async def update_lesson(
     course_id: int,
-    module_id: int,
-    lesson_id: int,
+    module_id: str,
+    lesson_id: str,
     data: LessonUpdate,
     instructor_id: int = Depends(require_instructor),
 ):
@@ -132,14 +153,36 @@ async def update_lesson(
     return CourseContentResponse(**content)
 
 
+@router.delete(
+    "/{course_id}/content/modules/{module_id}/lessons/{lesson_id}",
+    response_model=CourseContentResponse,
+)
+async def delete_lesson(
+    course_id: int,
+    module_id: str,
+    lesson_id: str,
+    instructor_id: int = Depends(require_instructor),
+):
+    """Soft-delete a lesson (set is_active=false) (instructors only)."""
+    db = get_mongodb()
+    service = CourseContentService(db)
+    content = await service.delete_lesson(course_id, module_id, lesson_id)
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course content, module, or lesson not found",
+        )
+    return CourseContentResponse(**content)
+
+
 @router.post(
     "/{course_id}/content/modules/{module_id}/lessons/{lesson_id}/resources",
     response_model=CourseContentResponse,
 )
 async def add_media_resource(
     course_id: int,
-    module_id: int,
-    lesson_id: int,
+    module_id: str,
+    lesson_id: str,
     data: MediaResourceCreate,
     instructor_id: int = Depends(require_instructor),
 ):
@@ -161,8 +204,8 @@ async def add_media_resource(
 )
 async def update_media_resource(
     course_id: int,
-    module_id: int,
-    lesson_id: int,
+    module_id: str,
+    lesson_id: str,
     resource_index: int,
     data: MediaResourceUpdate,
     instructor_id: int = Depends(require_instructor),
@@ -187,8 +230,8 @@ async def update_media_resource(
 )
 async def delete_media_resource(
     course_id: int,
-    module_id: int,
-    lesson_id: int,
+    module_id: str,
+    lesson_id: str,
     resource_index: int,
     instructor_id: int = Depends(require_instructor),
 ):

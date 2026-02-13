@@ -7,7 +7,7 @@ from config import settings
 from core.database import engine
 from core.mongodb import close_mongodb, connect_mongodb
 from core.redis import close_redis, connect_redis, get_redis
-from models import Certificate, Course, Enrollment  # noqa: F401
+from models import Certificate, Course, Enrollment, Progress  # noqa: F401
 
 
 @asynccontextmanager
