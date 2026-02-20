@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Future: Push notification configuration (not used yet)
     FIREBASE_PROJECT_ID: str = ""
 
+    # Kafka — fire-and-forget event consumption for notifications & certificates
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

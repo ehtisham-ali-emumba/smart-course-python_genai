@@ -1,20 +1,12 @@
-import logging
+"""Mock in-app notification service — logs styled notification cards."""
+
+import sys
 import textwrap
 from datetime import datetime, timezone
 
-from core_service.providers.rabbitmq.celery_app import celery_app
-
-logger = logging.getLogger(__name__)
-
 
 class MockNotificationService:
-    """Simulated in-app notification service that renders styled cards to logs.
-
-    In production, replace with:
-    - PostgreSQL insert into notifications table
-    - WebSocket push to connected clients
-    - Optional push notification via Firebase/APNs
-    """
+    """Simulated in-app notification service that renders styled cards to logs."""
 
     @staticmethod
     def create(
@@ -50,36 +42,10 @@ class MockNotificationService:
 ║                                                                    ║
 ╚══════════════════════════════════════════════════════════════════════╝"""
 
-        print(output)
-        logger.info(
-            "Mock notification created | user_id=%d | type=%s | title=%s",
-            user_id, notification_type, title,
-        )
+        print(output, file=sys.stderr, flush=True)
         return {
             "status": "created_mock",
             "user_id": user_id,
             "type": notification_type,
             "title": title,
         }
-
-
-mock_notification = MockNotificationService()
-
-
-@celery_app.task(
-    bind=True,
-    max_retries=3,
-    name="core_service.tasks.notification_tasks.create_in_app_notification",
-)
-def create_in_app_notification(
-    self, user_id: int, title: str, message: str, notification_type: str = "system"
-):
-    try:
-        return mock_notification.create(
-            user_id=user_id,
-            title=title,
-            message=message,
-            notification_type=notification_type,
-        )
-    except Exception as exc:
-        self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))

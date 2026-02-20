@@ -1,19 +1,49 @@
+import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from notification_service.api.router import router
 from notification_service.core.logging import get_logger, setup_logging
+from notification_service.consumers.kafka_consumer import run_notification_consumer
+
+_consumer_task: asyncio.Task | None = None
+
+
+def _consumer_task_done(task: asyncio.Task) -> None:
+    """Surface any exception from the background consumer so it isn't swallowed."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        print(
+            f"[notification-service] CONSUMER TASK CRASHED: {exc!r}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown."""
+    global _consumer_task
     setup_logging()
-    logger = get_logger("main")
-    logger.info("notification_service_starting", port=8005)
+    log = get_logger("main")
+    log.info("notification_service_starting", port=8005)
+
+    _consumer_task = asyncio.create_task(run_notification_consumer())
+    _consumer_task.add_done_callback(_consumer_task_done)
+
     yield
-    logger.info("notification_service_shutting_down")
+
+    if _consumer_task:
+        _consumer_task.cancel()
+        try:
+            await _consumer_task
+        except asyncio.CancelledError:
+            pass
+    log.info("notification_service_shutting_down")
 
 
 app = FastAPI(

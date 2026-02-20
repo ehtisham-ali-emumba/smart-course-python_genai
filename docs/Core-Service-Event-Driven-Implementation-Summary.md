@@ -68,19 +68,22 @@
 
 ---
 
-## 2. Kafka → Celery Routing (Event Bridge)
+## 2. Kafka → Processing Routing
 
-| Kafka Event | Celery Tasks |
-|-------------|--------------|
+**Core Event Bridge:** Analytics/logging only (no Celery tasks).
+
+**Notification Service (Kafka consumer, fire-and-forget):**
+
+| Kafka Event | Actions (inline mock) |
+|-------------|------------------------|
 | `user.registered` | send_welcome_email, create_in_app_notification |
+| `course.published` | send_course_published_email, create_in_app_notification |
+| `course.archived` | create_in_app_notification |
 | `enrollment.created` | send_enrollment_confirmation, create_in_app_notification |
 | `enrollment.dropped` | create_in_app_notification |
 | `enrollment.completed` | send_course_completion_email, create_in_app_notification |
-| `certificate.issued` | send_certificate_ready_email, generate_certificate_pdf, create_in_app_notification |
+| `certificate.issued` | send_certificate_ready_email, create_in_app_notification, generate_certificate_pdf |
 | `certificate.revoked` | create_in_app_notification |
-| `course.published` | send_course_published_email, create_in_app_notification |
-| `course.archived` | create_in_app_notification |
-| `user.login`, `user.profile_updated`, `course.created`, `course.updated`, `progress.updated`, `progress.course_completed` | Log only (Analytics Week 4) |
 
 ---
 

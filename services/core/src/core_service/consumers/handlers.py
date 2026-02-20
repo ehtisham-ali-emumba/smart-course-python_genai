@@ -2,20 +2,18 @@ import logging
 from typing import Any
 
 from core_service.events.envelope import EventEnvelope
-from core_service.providers.rabbitmq.dispatcher import CeleryDispatcher
 
 logger = logging.getLogger(__name__)
 
 
 class EventHandlerRegistry:
-    """Routes Kafka events to appropriate Celery task dispatches.
+    """Routes Kafka events — analytics/logging only.
 
-    Each handler method receives the event envelope and dispatches
-    zero or more Celery tasks via the CeleryDispatcher.
+    Email, notifications, and certificates handled by notification-service
+    via Kafka (fire-and-forget). This bridge logs for analytics (Week 4).
     """
 
     def __init__(self) -> None:
-        self.dispatcher = CeleryDispatcher()
         self._handlers: dict[str, Any] = {
             "user.registered": self._on_user_registered,
             "user.login": self._on_user_login,
@@ -47,18 +45,7 @@ class EventHandlerRegistry:
     # ── User Events ──────────────────────────────────────────
 
     async def _on_user_registered(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.send_welcome_email(
-            user_id=p["user_id"],
-            email=p["email"],
-            first_name=p.get("first_name", ""),
-        )
-        self.dispatcher.create_in_app_notification(
-            user_id=p["user_id"],
-            title="Welcome to SmartCourse!",
-            message=f"Hi {p.get('first_name', '')}! Start exploring courses and begin your learning journey.",
-            notification_type="welcome",
-        )
+        logger.info("User registered: user_id=%s", event.payload.get("user_id"))
 
     async def _on_user_login(self, event: EventEnvelope) -> None:
         # Analytics-only — no tasks dispatched (Week 4)
@@ -75,104 +62,36 @@ class EventHandlerRegistry:
         logger.info("Course created tracked: course_id=%s", event.payload.get("course_id"))
 
     async def _on_course_published(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.send_course_published_email(
-            instructor_id=p["instructor_id"],
-            course_id=p["course_id"],
-            course_title=p.get("title", ""),
-        )
-        self.dispatcher.create_in_app_notification(
-            user_id=p["instructor_id"],
-            title="Course Published!",
-            message=f"Your course '{p.get('title', '')}' is now live and available to students.",
-            notification_type="course_published",
-        )
+        logger.info("Course published: course_id=%s", event.payload.get("course_id"))
 
     async def _on_course_updated(self, event: EventEnvelope) -> None:
         # Analytics-only (Week 4)
         logger.info("Course updated tracked: course_id=%s", event.payload.get("course_id"))
 
     async def _on_course_archived(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.create_in_app_notification(
-            user_id=p["instructor_id"],
-            title="Course Archived",
-            message=f"Your course '{p.get('title', '')}' has been archived.",
-            notification_type="course_archived",
-        )
+        # In-app notification handled by notification-service via Kafka
+        logger.debug("Course archived: course_id=%s", event.payload.get("course_id"))
 
     # ── Enrollment Events ────────────────────────────────────
 
     async def _on_enrollment_created(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.send_enrollment_confirmation(
-            student_id=p["student_id"],
-            course_id=p["course_id"],
-            course_title=p.get("course_title", "your course"),
-            email=p.get("email", ""),
-        )
-        self.dispatcher.create_in_app_notification(
-            user_id=p["student_id"],
-            title="Enrollment Confirmed!",
-            message=f"You're now enrolled in '{p.get('course_title', 'a course')}'. Start learning!",
-            notification_type="enrollment",
-        )
+        logger.info("Enrollment created: enrollment_id=%s", event.payload.get("enrollment_id"))
 
     async def _on_enrollment_dropped(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.create_in_app_notification(
-            user_id=p["student_id"],
-            title="Course Dropped",
-            message="You've dropped a course. You can re-enroll anytime.",
-            notification_type="enrollment",
-        )
+        # In-app notification handled by notification-service via Kafka
+        logger.debug("Enrollment dropped: student_id=%s", event.payload.get("student_id"))
 
     async def _on_enrollment_completed(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.send_course_completion_email(
-            student_id=p["student_id"],
-            course_id=p["course_id"],
-            course_title=p.get("course_title", "your course"),
-            email=p.get("email", ""),
-        )
-        self.dispatcher.create_in_app_notification(
-            user_id=p["student_id"],
-            title="Course Completed!",
-            message=f"Congratulations! You've completed '{p.get('course_title', 'a course')}'. Your certificate is being prepared.",
-            notification_type="completion",
-        )
+        logger.info("Enrollment completed: enrollment_id=%s", event.payload.get("enrollment_id"))
 
     # ── Certificate Events ───────────────────────────────────
 
     async def _on_certificate_issued(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.send_certificate_ready_email(
-            student_id=p["student_id"],
-            certificate_number=p["certificate_number"],
-            verification_code=p["verification_code"],
-            email=p.get("email", ""),
-        )
-        self.dispatcher.generate_certificate_pdf(
-            certificate_id=p["certificate_id"],
-            enrollment_id=p["enrollment_id"],
-            student_name=p.get("student_name", ""),
-            course_title=p.get("course_title", ""),
-        )
-        self.dispatcher.create_in_app_notification(
-            user_id=p["student_id"],
-            title="Certificate Ready!",
-            message=f"Your certificate #{p['certificate_number']} is ready. Download it from your profile.",
-            notification_type="certificate",
-        )
+        logger.info("Certificate issued: cert_id=%s", event.payload.get("certificate_id"))
 
     async def _on_certificate_revoked(self, event: EventEnvelope) -> None:
-        p = event.payload
-        self.dispatcher.create_in_app_notification(
-            user_id=p.get("student_id", 0),
-            title="Certificate Revoked",
-            message=f"Certificate for enrollment #{p['enrollment_id']} has been revoked. Reason: {p.get('reason', 'N/A')}",
-            notification_type="certificate",
-        )
+        # In-app notification handled by notification-service via Kafka
+        logger.debug("Certificate revoked: enrollment_id=%s", event.payload.get("enrollment_id"))
 
     # ── Progress Events ──────────────────────────────────────
 

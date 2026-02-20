@@ -91,40 +91,5 @@ class CeleryDispatcher:
         )
         logger.info("Dispatched send_course_published_email for instructor_id=%s", instructor_id)
 
-    # ── In-App Notification Tasks ─────────────────────────────
-
-    def create_in_app_notification(
-        self, user_id: int, title: str, message: str, notification_type: str = "system"
-    ) -> None:
-        self._app.send_task(
-            "core_service.tasks.notification_tasks.create_in_app_notification",
-            kwargs={
-                "user_id": user_id,
-                "title": title,
-                "message": message,
-                "notification_type": notification_type,
-            },
-            queue="notification_queue",
-        )
-        logger.info("Dispatched create_in_app_notification for user_id=%s", user_id)
-
-    # ── Certificate Tasks ────────────────────────────────────
-
-    def generate_certificate_pdf(
-        self,
-        certificate_id: int,
-        enrollment_id: int,
-        student_name: str,
-        course_title: str,
-    ) -> None:
-        self._app.send_task(
-            "core_service.tasks.certificate_tasks.generate_certificate_pdf",
-            kwargs={
-                "certificate_id": certificate_id,
-                "enrollment_id": enrollment_id,
-                "student_name": student_name,
-                "course_title": course_title,
-            },
-            queue="certificate_queue",
-        )
-        logger.info("Dispatched generate_certificate_pdf for cert_id=%s", certificate_id)
+    # In-app notifications and certificate PDF generation moved to
+    # notification-service (Kafka consumer, fire-and-forget)

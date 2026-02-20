@@ -192,14 +192,21 @@ services:
 
   notification-service:
     build:
-      context: ./services/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/notification-service/Dockerfile
     container_name: smartcourse-notification-service
     # No ports exposed to host — only accessible through API Gateway
     environment:
+      - PYTHONUNBUFFERED=1
       - SERVICE_NAME=notification-service
       - SERVICE_PORT=8005
       - LOG_LEVEL=INFO
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - smartcourse-network
 
@@ -243,31 +250,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - smartcourse-network
-
-  # ═══════════════════════════════════════════════════════════════
-  #  CORE SERVICE — Celery Worker (Task Execution)
-  # ═══════════════════════════════════════════════════════════════
-
-  core-celery-worker:
-    build:
-      context: .
-      dockerfile: services/core/Dockerfile
-    container_name: smartcourse-core-celery-worker
-    command: >
-      celery -A core_service.providers.rabbitmq.celery_app:celery_app worker
-      --loglevel=info
-      -Q email_queue,notification_queue,certificate_queue
-      --concurrency=4
-    environment:
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
-    depends_on:
       rabbitmq:
         condition: service_healthy
       redis:

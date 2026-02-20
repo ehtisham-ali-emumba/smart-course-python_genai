@@ -6,8 +6,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install core service (Kafka consumer, event schemas)
+COPY services/core/ /core/
+RUN pip install --no-cache-dir /core
+
 # Copy only pyproject.toml first for better caching
-COPY pyproject.toml .
+COPY services/notification-service/pyproject.toml .
 
 # Install dependencies first (without the package itself)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
@@ -19,7 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     httpx>=0.26.0 \
     structlog>=24.1.0
 
-COPY src/ ./src/
+COPY services/notification-service/src/ ./src/
 
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
@@ -27,5 +31,4 @@ RUN pip install --no-cache-dir -e .
 ENV PYTHONPATH=/app/src:/app
 EXPOSE 8005
 
-# No Alembic migration — this service has no database
 CMD ["uvicorn", "notification_service.main:app", "--host", "0.0.0.0", "--port", "8005"]
