@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,14 +9,18 @@ from repositories.certificate import CertificateRepository
 from repositories.enrollment import EnrollmentRepository
 from schemas.certificate import CertificateCreate
 
+if TYPE_CHECKING:
+    from core_service.providers.kafka.producer import EventProducer
+
 
 class CertificateService:
     """Business logic for certificate operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, event_producer: "EventProducer | None" = None):
         self.db = db
         self.cert_repo = CertificateRepository(db)
         self.enrollment_repo = EnrollmentRepository(db)
+        self._producer = event_producer
 
     async def issue_certificate(
         self,
@@ -55,7 +60,27 @@ class CertificateService:
             "score_percentage": data.score_percentage,
             "issued_by_id": user_id,
         }
-        return await self.cert_repo.create(cert_data)
+        cert = await self.cert_repo.create(cert_data)
+
+        if self._producer:
+            from core_service.events.certificate import CertificateIssuedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.COURSE,
+                "certificate.issued",
+                CertificateIssuedPayload(
+                    certificate_id=cert.id,
+                    enrollment_id=enrollment.id,
+                    student_id=enrollment.student_id,
+                    course_id=enrollment.course_id,
+                    certificate_number=cert.certificate_number,
+                    verification_code=cert.verification_code,
+                ).model_dump(),
+                key=str(enrollment.id),
+            )
+
+        return cert
 
     async def get_certificate(self, certificate_id: int) -> Certificate | None:
         """Get certificate by ID."""
@@ -95,8 +120,25 @@ class CertificateService:
         if not cert:
             return None
 
-        return await self.cert_repo.update(certificate_id, {
+        result = await self.cert_repo.update(certificate_id, {
             "is_revoked": True,
             "revoked_at": datetime.utcnow(),
             "revoked_reason": reason,
         })
+
+        if self._producer and result:
+            from core_service.events.certificate import CertificateRevokedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.COURSE,
+                "certificate.revoked",
+                CertificateRevokedPayload(
+                    certificate_id=certificate_id,
+                    enrollment_id=result.enrollment_id,
+                    reason=reason,
+                ).model_dump(),
+                key=str(result.enrollment_id),
+            )
+
+        return result

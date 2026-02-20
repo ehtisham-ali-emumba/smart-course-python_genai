@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://:smartcourse_secret@localhost:6379/1"
 
+    # Kafka
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

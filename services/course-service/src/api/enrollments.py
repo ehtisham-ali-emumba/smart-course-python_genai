@@ -1,8 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_authenticated_user, get_current_user_id
+from api.dependencies import get_authenticated_user, get_current_user_id, get_event_producer
 from core.database import get_db
+from core_service.events.enrollment import (
+    EnrollmentCreatedPayload,
+    EnrollmentDroppedPayload,
+    EnrollmentReactivatedPayload,
+)
+from core_service.providers.kafka.producer import EventProducer
+from core_service.providers.kafka.topics import Topics
 from schemas.enrollment import (
     EnrollmentCreate,
     EnrollmentListResponse,
@@ -18,6 +25,7 @@ async def enroll(
     data: EnrollmentCreate,
     user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """Enroll the current user in a course. Instructors cannot enroll as students."""
     user_id, role = user
@@ -29,6 +37,19 @@ async def enroll(
     service = EnrollmentService(db)
     try:
         enrollment = await service.enroll_student(user_id, data)
+
+        await producer.publish(
+            Topics.ENROLLMENT,
+            "enrollment.created",
+            EnrollmentCreatedPayload(
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
+                status=enrollment.status,
+            ).model_dump(),
+            key=str(enrollment.student_id),
+        )
+
         return EnrollmentResponse.model_validate(enrollment)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -73,6 +94,7 @@ async def drop_enrollment(
     enrollment_id: int,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """Drop a course enrollment."""
     service = EnrollmentService(db)
@@ -82,6 +104,18 @@ async def drop_enrollment(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
             )
+
+        await producer.publish(
+            Topics.ENROLLMENT,
+            "enrollment.dropped",
+            EnrollmentDroppedPayload(
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
+            ).model_dump(),
+            key=str(enrollment.student_id),
+        )
+
         return EnrollmentResponse.model_validate(enrollment)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -92,6 +126,7 @@ async def undrop_enrollment(
     enrollment_id: int,
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """Re-enroll in a course after dropping."""
     service = EnrollmentService(db)
@@ -101,6 +136,18 @@ async def undrop_enrollment(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
             )
+
+        await producer.publish(
+            Topics.ENROLLMENT,
+            "enrollment.reactivated",
+            EnrollmentReactivatedPayload(
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
+            ).model_dump(),
+            key=str(enrollment.student_id),
+        )
+
         return EnrollmentResponse.model_validate(enrollment)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))

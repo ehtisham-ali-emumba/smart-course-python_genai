@@ -1,5 +1,11 @@
 from fastapi import HTTPException, Request, status
 
+from core_service.providers.kafka.producer import EventProducer
+
+
+def get_event_producer(request: Request) -> EventProducer:
+    return request.app.state.event_producer
+
 
 def get_current_user_id(request: Request) -> int:
     """

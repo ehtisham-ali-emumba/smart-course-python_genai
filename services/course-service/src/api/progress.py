@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_current_user_id
+from api.dependencies import get_current_user_id, get_event_producer
 from core.database import get_db
 from core.mongodb import get_mongodb
+from core_service.providers.kafka.producer import EventProducer
 from schemas.progress import CourseProgressSummary, ProgressCreate, ProgressResponse
 from services.progress import ProgressService
 
@@ -15,6 +16,7 @@ async def update_progress(
     data: ProgressCreate,
     user_id: int = Depends(get_current_user_id),
     pg_db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """
     Create or update progress on a lesson/quiz/summary.
@@ -30,7 +32,7 @@ async def update_progress(
     enrollment is auto-completed and a certificate is auto-issued.
     """
     mongo_db = get_mongodb()
-    service = ProgressService(pg_db, mongo_db)
+    service = ProgressService(pg_db, mongo_db, event_producer=producer)
     try:
         progress = await service.update_progress(user_id, data)
         return ProgressResponse.model_validate(progress)
@@ -49,7 +51,7 @@ async def get_progress_by_enrollment(
     Returns course-level, module-level, and per-lesson progress.
     """
     mongo_db = get_mongodb()
-    service = ProgressService(pg_db, mongo_db)
+    service = ProgressService(pg_db, mongo_db)  # no producer needed for read
     try:
         return await service.get_enrollment_progress(user_id, enrollment_id)
     except ValueError as e:
@@ -67,7 +69,7 @@ async def get_progress_by_course(
     Internally looks up the enrollment for the current user.
     """
     mongo_db = get_mongodb()
-    service = ProgressService(pg_db, mongo_db)
+    service = ProgressService(pg_db, mongo_db)  # no producer needed for read
     try:
         return await service.get_course_progress(user_id, course_id)
     except ValueError as e:

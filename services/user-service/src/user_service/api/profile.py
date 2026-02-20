@@ -1,11 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core_service.events.user import UserProfileUpdatedPayload
+from core_service.providers.kafka.producer import EventProducer
+from core_service.providers.kafka.topics import Topics
 from user_service.core.database import get_db
 from user_service.schemas.user import UserResponse, UserUpdate
 from user_service.services.user import UserService
 
 router = APIRouter()
+
+
+def get_event_producer(request: Request) -> EventProducer:
+    return request.app.state.event_producer
 
 
 @router.get("/", response_model=UserResponse)
@@ -40,6 +47,7 @@ async def update_profile(
     user_data: UserUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """Update user profile."""
     user_id = request.headers.get("X-User-ID")
@@ -57,6 +65,18 @@ async def update_profile(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
+        )
+
+    fields_changed = list(user_data.model_dump(exclude_unset=True).keys())
+    if fields_changed:
+        await producer.publish(
+            Topics.USER,
+            "user.profile_updated",
+            UserProfileUpdatedPayload(
+                user_id=int(user_id),
+                fields_changed=fields_changed,
+            ).model_dump(),
+            key=str(user_id),
         )
 
     return UserResponse(**user)

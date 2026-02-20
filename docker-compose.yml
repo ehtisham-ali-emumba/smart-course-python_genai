@@ -35,6 +35,91 @@ services:
     networks:
       - smartcourse-network
 
+  # ═══════════════════════════════════════════════════════════════
+  #  KAFKA + ZOOKEEPER — Event Streaming
+  # ═══════════════════════════════════════════════════════════════
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: smartcourse-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,srvr,mntr"
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartcourse-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: smartcourse-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - smartcourse-network
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: smartcourse-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user.events --partitions 3 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic course.events --partitions 3 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic enrollment.events --partitions 3 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic progress.events --partitions 3 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification.events --partitions 1 --replication-factor 1 &&
+        echo 'All Kafka topics created.'
+    networks:
+      - smartcourse-network
+
+  # ═══════════════════════════════════════════════════════════════
+  #  RABBITMQ — Task Queue Broker
+  # ═══════════════════════════════════════════════════════════════
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: smartcourse-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-smartcourse}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-smartcourse_secret}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartcourse-network
+
   mongodb:
     image: mongo:7-jammy
     container_name: smartcourse-mongodb
@@ -56,8 +141,8 @@ services:
 
   user-service:
     build:
-      context: ./services/user-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/user-service/Dockerfile
     container_name: smartcourse-user-service
     # No ports exposed to host — only accessible through API Gateway
     environment:
@@ -67,18 +152,21 @@ services:
       - JWT_ALGORITHM=HS256
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15
       - JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - smartcourse-network
 
   course-service:
     build:
-      context: ./services/course-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/course-service/Dockerfile
     container_name: smartcourse-course-service
     volumes:
       # Mount src for live code changes (avoids rebuild)
@@ -89,12 +177,15 @@ services:
       - MONGODB_URL=mongodb://${MONGO_USER:-smartcourse}:${MONGO_PASSWORD:-smartcourse_secret}@mongodb:27017/${MONGO_DB:-smartcourse}?authSource=admin
       - MONGODB_DB_NAME=${MONGO_DB:-smartcourse}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/1
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
     depends_on:
       postgres:
         condition: service_healthy
       mongodb:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - smartcourse-network
@@ -135,6 +226,55 @@ services:
   # ═══════════════════════════════════════════════════════════════
   #  API GATEWAY — Nginx reverse proxy
   # ═══════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════
+  #  CORE SERVICE — Event Bridge (Kafka Consumer)
+  # ═══════════════════════════════════════════════════════════════
+
+  core-event-bridge:
+    build:
+      context: .
+      dockerfile: services/core/Dockerfile
+    container_name: smartcourse-core-event-bridge
+    command: python -m core_service.consumers.event_bridge
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  # ═══════════════════════════════════════════════════════════════
+  #  CORE SERVICE — Celery Worker (Task Execution)
+  # ═══════════════════════════════════════════════════════════════
+
+  core-celery-worker:
+    build:
+      context: .
+      dockerfile: services/core/Dockerfile
+    container_name: smartcourse-core-celery-worker
+    command: >
+      celery -A core_service.providers.rabbitmq.celery_app:celery_app worker
+      --loglevel=info
+      -Q email_queue,notification_queue,certificate_queue
+      --concurrency=4
+    environment:
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
   api-gateway:
     build:
       context: ./services/api-gateway/nginx
@@ -148,7 +288,7 @@ services:
       - course-service
       - notification-service
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -163,3 +303,4 @@ volumes:
   postgres_data:
   redis_data:
   mongodb_data:
+  rabbitmq_data:

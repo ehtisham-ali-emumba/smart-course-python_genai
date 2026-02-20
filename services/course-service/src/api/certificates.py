@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_authenticated_user
+from api.dependencies import get_authenticated_user, get_event_producer
 from core.database import get_db
+from core_service.providers.kafka.producer import EventProducer
 from schemas.certificate import (
     CertificateCreate,
     CertificateListResponse,
@@ -19,6 +20,7 @@ async def issue_certificate(
     data: CertificateCreate,
     user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """
     Request/issue a certificate for a completed enrollment.
@@ -26,7 +28,7 @@ async def issue_certificate(
     - Instructors: can issue for any completed enrollment.
     """
     user_id, role = user
-    service = CertificateService(db)
+    service = CertificateService(db, event_producer=producer)
     try:
         cert = await service.issue_certificate(data, user_id, role)
         return CertificateResponse.model_validate(cert)
@@ -43,7 +45,7 @@ async def list_my_certificates(
 ):
     """Get all certificates for the current user."""
     user_id, role = user
-    service = CertificateService(db)
+    service = CertificateService(db)  # no producer needed for read
     certs, total = await service.get_certificates_for_user(user_id, role, skip=skip, limit=limit)
     return CertificateListResponse(
         items=[CertificateResponse.model_validate(c) for c in certs],
@@ -61,7 +63,7 @@ async def get_certificate_by_enrollment(
 ):
     """Get certificate for a specific enrollment. Students can only access their own."""
     user_id, role = user
-    service = CertificateService(db)
+    service = CertificateService(db)  # no producer needed for read
     try:
         cert = await service.get_certificate_by_enrollment(enrollment_id, user_id, role)
         return CertificateResponse.model_validate(cert)
@@ -77,7 +79,7 @@ async def verify_certificate(
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint to verify a certificate by its verification code."""
-    service = CertificateService(db)
+    service = CertificateService(db)  # no producer needed for read
     cert = await service.verify_certificate(verification_code)
     if not cert:
         return CertificateVerifyResponse(is_valid=False)
@@ -96,7 +98,7 @@ async def get_certificate(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a certificate by ID."""
-    service = CertificateService(db)
+    service = CertificateService(db)  # no producer needed for read
     cert = await service.get_certificate(certificate_id)
     if not cert:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")

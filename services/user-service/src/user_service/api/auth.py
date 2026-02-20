@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core_service.events.user import UserLoginPayload, UserRegisteredPayload
+from core_service.providers.kafka.producer import EventProducer
+from core_service.providers.kafka.topics import Topics
 from user_service.core.database import get_db
 from user_service.core.security import (
     create_access_token,
@@ -19,10 +22,15 @@ from user_service.services.auth import AuthService
 router = APIRouter()
 
 
+def get_event_producer(request: Request) -> EventProducer:
+    return request.app.state.event_producer
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserRegister,
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """
     Register a new user.
@@ -33,6 +41,20 @@ async def register(
     auth_service = AuthService(db)
     try:
         user = await auth_service.register(user_data)
+
+        await producer.publish(
+            Topics.USER,
+            "user.registered",
+            UserRegisteredPayload(
+                user_id=user.id,
+                email=user.email,
+                role=user.role,
+                first_name=user.first_name,
+                last_name=user.last_name,
+            ).model_dump(),
+            key=str(user.id),
+        )
+
         return UserResponse.model_validate(user)
     except ValueError as e:
         raise HTTPException(
@@ -45,6 +67,7 @@ async def register(
 async def login(
     credentials: UserLogin,
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """
     Authenticate user and return JWT tokens.
@@ -64,6 +87,13 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    await producer.publish(
+        Topics.USER,
+        "user.login",
+        UserLoginPayload(user_id=user.id, email=user.email).model_dump(),
+        key=str(user.id),
+    )
 
     access_token = create_access_token(user.id, user.role)
     refresh_token = create_refresh_token(user.id, user.role)

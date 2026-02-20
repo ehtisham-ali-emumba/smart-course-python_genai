@@ -7,8 +7,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install core service (event-driven infrastructure)
+COPY services/core/ /core/
+RUN pip install --no-cache-dir /core
+
 # Copy only pyproject.toml first for better caching
-COPY pyproject.toml .
+COPY services/course-service/pyproject.toml .
 
 # Install dependencies first (without the package itself)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
@@ -32,13 +36,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     structlog>=24.1.0 \
     alembic>=1.13.0
 
-COPY src/ ./src/
-COPY alembic.ini ./
+COPY services/course-service/src/ ./src/
+COPY services/course-service/alembic.ini ./
 
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
 
-COPY src/alembic/ ./src/alembic/
+COPY services/course-service/src/alembic/ ./src/alembic/
 
 ENV PYTHONPATH=/app/src:/app
 EXPOSE 8002

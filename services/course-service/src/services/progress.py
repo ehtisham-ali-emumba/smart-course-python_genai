@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,16 +12,25 @@ from repositories.enrollment import EnrollmentRepository
 from repositories.progress import ProgressRepository
 from schemas.progress import CourseProgressSummary, ModuleProgressDetail, ProgressCreate
 
+if TYPE_CHECKING:
+    from core_service.providers.kafka.producer import EventProducer
+
 
 class ProgressService:
     """Business logic for progress tracking."""
 
-    def __init__(self, pg_db: AsyncSession, mongo_db: AsyncIOMotorDatabase):
+    def __init__(
+        self,
+        pg_db: AsyncSession,
+        mongo_db: AsyncIOMotorDatabase,
+        event_producer: "EventProducer | None" = None,
+    ):
         self.progress_repo = ProgressRepository(pg_db)
         self.enrollment_repo = EnrollmentRepository(pg_db)
         self.cert_repo = CertificateRepository(pg_db)
         self.content_repo = CourseContentRepository(mongo_db)
         self.pg_db = pg_db
+        self._producer = event_producer
 
     # ── UPDATE PROGRESS ───────────────────────────────────────────
 
@@ -52,6 +61,24 @@ class ProgressService:
             item_id=data.item_id,
             progress_percentage=float(data.progress_percentage),
         )
+
+        if self._producer:
+            from core_service.events.progress import ProgressUpdatedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.PROGRESS,
+                "progress.updated",
+                ProgressUpdatedPayload(
+                    user_id=user_id,
+                    enrollment_id=data.enrollment_id,
+                    course_id=enrollment.course_id,
+                    item_type=data.item_type,
+                    item_id=data.item_id,
+                    progress_percentage=float(data.progress_percentage),
+                ).model_dump(),
+                key=str(user_id),
+            )
 
         # Update enrollment timestamps
         update_data = {"last_accessed_at": datetime.utcnow()}
@@ -287,6 +314,21 @@ class ProgressService:
             return
 
         # All items at 100% — mark enrollment completed
+        if self._producer:
+            from core_service.events.progress import CourseCompletedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.PROGRESS,
+                "progress.course_completed",
+                CourseCompletedPayload(
+                    user_id=enrollment.student_id,
+                    enrollment_id=enrollment_id,
+                    course_id=course_id,
+                ).model_dump(),
+                key=str(enrollment.student_id),
+            )
+
         await self.enrollment_repo.update(
             enrollment_id,
             {
@@ -294,6 +336,22 @@ class ProgressService:
                 "completed_at": datetime.utcnow(),
             },
         )
+
+        if self._producer:
+            from core_service.events.enrollment import EnrollmentCompletedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.ENROLLMENT,
+                "enrollment.completed",
+                EnrollmentCompletedPayload(
+                    enrollment_id=enrollment_id,
+                    student_id=enrollment.student_id,
+                    course_id=course_id,
+                    completed_at=datetime.utcnow().isoformat(),
+                ).model_dump(),
+                key=str(enrollment.student_id),
+            )
 
         # Auto-issue certificate (only if one doesn't already exist)
         existing_cert = await self.cert_repo.get_by_enrollment(enrollment_id)
@@ -309,4 +367,22 @@ class ProgressService:
             "score_percentage": Decimal("100.00"),
             "issued_by_id": None,
         }
-        await self.cert_repo.create(cert_data)
+        cert = await self.cert_repo.create(cert_data)
+
+        if self._producer:
+            from core_service.events.certificate import CertificateIssuedPayload
+            from core_service.providers.kafka.topics import Topics
+
+            await self._producer.publish(
+                Topics.COURSE,
+                "certificate.issued",
+                CertificateIssuedPayload(
+                    certificate_id=cert.id,
+                    enrollment_id=enrollment_id,
+                    student_id=enrollment.student_id,
+                    course_id=course_id,
+                    certificate_number=cert.certificate_number,
+                    verification_code=cert.verification_code,
+                ).model_dump(),
+                key=str(enrollment_id),
+            )
