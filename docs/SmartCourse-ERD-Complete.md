@@ -9,11 +9,13 @@
 
 ## Key Schema Decisions
 
-| Decision                              | Rationale                                                      |
-| ------------------------------------- | -------------------------------------------------------------- |
-| **Merged Enrollments + Progress**     | 1:1 relationship - combining eliminates unnecessary join       |
-| **Certificates → enrollment_id only** | Student/course derived from enrollment, reduces redundancy     |
-| **Progress arrays in Enrollments**    | completed_modules, completed_lessons stored as Postgres arrays |
+| Decision                                    | Rationale                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Separate Progress Table**                 | 1:N relationship - tracks per-lesson progress with percentage granularity      |
+| **enrollment_id in Progress (not course_id)** | Correctly scopes progress per enrollment; allows user re-enrollment tracking   |
+| **progress_percentage + updated_at**        | Enables partial progress tracking (0-100%) and resume functionality            |
+| **Auto-issue Certificates**                 | Triggered when course hits 100% completion; reduces manual overhead            |
+| **Certificates → enrollment_id only**       | Student/course derived from enrollment, reduces redundancy                     |
 
 ---
 
@@ -224,39 +226,30 @@ Tracks student enrollments in courses AND their progress (merged 1:1 relationshi
 
 ---
 
-#### **~~PROGRESS~~ (REMOVED - Merged into ENROLLMENTS)**
+#### **PROGRESS**
 
-**This table has been removed.** All progress fields are now part of the ENROLLMENTS table since there was a 1:1 relationship.
+Tracks per-lesson progress for each enrollment. One row per (user, enrollment, item).
 
-See ENROLLMENTS table above for the merged schema.
+| Column              | Type          | Constraints                               | Description                                     |
+| ------------------- | ------------- | ----------------------------------------- | ----------------------------------------------- |
+| id                  | SERIAL        | PRIMARY KEY                               | Auto-incrementing identifier                    |
+| user_id             | INTEGER       | NOT NULL, INDEX                           | User who owns this progress                     |
+| enrollment_id       | INTEGER       | FK → enrollments(id), NOT NULL, INDEX     | The enrollment this progress belongs to         |
+| item_type           | VARCHAR(20)   | NOT NULL                                  | 'lesson', 'quiz', or 'summary'                 |
+| item_id             | VARCHAR(50)   | NOT NULL                                  | MongoDB ID of the lesson/quiz/summary           |
+| progress_percentage | DECIMAL(5,2)  | NOT NULL, DEFAULT 0.00                    | 0.00 to 100.00 — how far the user has progressed |
+| completed_at        | TIMESTAMP     | NULLABLE                                  | Set only when progress_percentage reaches 100   |
+| created_at          | TIMESTAMP     | NOT NULL, DEFAULT NOW()                   | Row creation timestamp                          |
+| updated_at          | TIMESTAMP     | NOT NULL, DEFAULT NOW()                   | Last progress update timestamp                  |
 
-**How Progress Works with MongoDB Modules/Lessons:**
+**Unique Constraint:** `(user_id, enrollment_id, item_type, item_id)`
 
-The Enrollment table (PostgreSQL) stores **references** to MongoDB module/lesson IDs, not the actual content:
-
-1. **ID Matching**: MongoDB's `COURSE_CONTENT` assigns each module a `module_id` (integer) and each lesson a `lesson_id` (integer). These are simple sequential IDs within each course.
-
-2. **Array Storage**: Enrollment stores completed IDs in PostgreSQL arrays:
-   - `completed_modules = [1, 2, 3]` → modules 1, 2, 3 are done
-   - `completed_lessons = [1, 2, 3, 4, 5, 6]` → lessons 1-6 are done
-
-3. **Calculation Flow**:
-
-   ```
-   Student completes lesson 5 in module 2
-   ↓
-   Course Service adds 5 to completed_lessons array in Enrollment
-   ↓
-   Service fetches course metadata from MongoDB (total_modules, total_lessons)
-   ↓
-   Calculates: completion_% = (completed_lessons.length / total_lessons) × 100
-   ↓
-   Updates enrollment.completion_percentage
-   ```
-
-4. **Current Position**: `current_module_id` and `current_lesson_id` track where the student left off for resume functionality.
-
-5. **Why This Works**: MongoDB stores the content structure (what's IN module 2), PostgreSQL stores progress state (IS module 2 complete?). The IDs are the bridge between them.
+**How Progress Aggregation Works:**
+- **Lesson progress**: Stored directly as `progress_percentage` (0–100) in each row
+- **Module progress**: Average of all lesson percentages within the module (lessons with no row = 0%)
+- **Course progress**: Average of ALL lesson percentages across ALL modules
+- **Completion**: An item is "completed" when `progress_percentage = 100` and `completed_at IS NOT NULL`
+- **Course completion**: When ALL items reach 100%, enrollment status → 'completed', certificate auto-issued
 
 ---
 
@@ -484,7 +477,7 @@ Course learning materials.
 | Instructor_Profiles → Courses          | 1:N         | One instructor creates many courses            |
 | Users → Enrollments                    | 1:N         | One student has many enrollments               |
 | Courses → Enrollments                  | 1:N         | One course has many enrollments                |
-| ~~Enrollments → Progress~~             | ~~1:1~~     | **REMOVED** - Progress merged into Enrollments |
+| Enrollments → Progress                 | 1:N         | One enrollment has many progress records (one per lesson) |
 | Enrollments → Certificates             | 1:1         | Each completion has one certificate            |
 | Users → Notifications                  | 1:N         | One user receives many notifications           |
 | Users → Events                         | 1:N         | One user triggers many events                  |
@@ -521,7 +514,11 @@ CREATE INDEX idx_enrollments_status ON enrollments(status);
 CREATE INDEX idx_enrollments_enrolled_at ON enrollments(enrolled_at);
 CREATE INDEX idx_enrollments_last_accessed ON enrollments(last_accessed_at);
 
--- Progress table REMOVED - fields merged into Enrollments
+-- Progress
+CREATE INDEX ix_progress_user_id ON progress(user_id);
+CREATE INDEX ix_progress_enrollment_id ON progress(enrollment_id);
+CREATE INDEX ix_progress_user_enrollment ON progress(user_id, enrollment_id);
+CREATE UNIQUE INDEX uq_progress_user_enrollment_item ON progress(user_id, enrollment_id, item_type, item_id);
 
 -- Certificates (only enrollment_id reference now)
 CREATE UNIQUE INDEX idx_certificates_number ON certificates(certificate_number);
@@ -582,7 +579,10 @@ ALTER TABLE enrollments
 ADD CONSTRAINT fk_enrollments_course
 FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE;
 
--- Progress table REMOVED - no foreign keys needed
+-- Progress
+ALTER TABLE progress
+ADD CONSTRAINT fk_progress_enrollment
+FOREIGN KEY (enrollment_id) REFERENCES enrollments(id) ON DELETE CASCADE;
 
 -- Certificates (only enrollment_id FK now)
 ALTER TABLE certificates

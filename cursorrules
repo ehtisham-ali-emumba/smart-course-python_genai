@@ -1,0 +1,5 @@
+- Do NOT create any .md or docs files unless explicitly asked
+- Do NOT create planning, progress, todo, or notes files unless asked
+- Do NOT create README updates unless asked
+- Work directly in code files only
+- Never create intermediate documentation during feature implementation

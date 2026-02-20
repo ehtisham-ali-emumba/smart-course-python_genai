@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -14,24 +15,40 @@ class ProgressRepository(BaseRepository[Progress]):
     def __init__(self, db: AsyncSession):
         super().__init__(db, Progress)
 
-    async def mark_completed(
+    async def upsert_progress(
         self,
         user_id: int,
-        course_id: int,
+        enrollment_id: int,
         item_type: str,
         item_id: str,
-    ) -> Optional[Progress]:
-        """Mark an item as completed (upsert — idempotent)."""
+        progress_percentage: float,
+    ) -> Progress:
+        """
+        Create or update a progress record (upsert).
+
+        - If no row exists: INSERT with the given percentage.
+        - If row exists: UPDATE percentage (and completed_at if 100%).
+        """
+        completed_at = datetime.utcnow() if progress_percentage >= 100 else None
+
         stmt = (
             insert(Progress.__table__)
             .values(
                 user_id=user_id,
-                course_id=course_id,
+                enrollment_id=enrollment_id,
                 item_type=item_type,
                 item_id=item_id,
+                progress_percentage=progress_percentage,
+                completed_at=completed_at,
+                updated_at=datetime.utcnow(),
             )
-            .on_conflict_do_nothing(
-                index_elements=["user_id", "item_type", "item_id"]
+            .on_conflict_do_update(
+                constraint="uq_progress_user_enrollment_item",
+                set_={
+                    "progress_percentage": progress_percentage,
+                    "completed_at": completed_at,
+                    "updated_at": datetime.utcnow(),
+                },
             )
             .returning(Progress.__table__.c.id)
         )
@@ -39,16 +56,13 @@ class ProgressRepository(BaseRepository[Progress]):
         result = await self.db.execute(stmt)
         await self.db.commit()
 
-        inserted_row = result.one_or_none()
-        if inserted_row is not None:
-            # Insert succeeded, fetch the full record (inserted_row is (id,))
-            return await self.get_by_id(inserted_row[0])
-        # Conflict - record already exists, fetch it
-        return await self.get_by_user_and_item(user_id, item_type, item_id)
+        row = result.one()
+        return await self.get_by_id(row[0])
 
     async def get_by_user_and_item(
         self,
         user_id: int,
+        enrollment_id: int,
         item_type: str,
         item_id: str,
     ) -> Optional[Progress]:
@@ -56,69 +70,63 @@ class ProgressRepository(BaseRepository[Progress]):
         result = await self.db.execute(
             select(Progress).where(
                 Progress.user_id == user_id,
+                Progress.enrollment_id == enrollment_id,
                 Progress.item_type == item_type,
                 Progress.item_id == item_id,
             )
         )
         return result.scalars().first()
 
-    async def get_user_course_progress(
+    async def get_enrollment_progress(
         self,
-        user_id: int,
-        course_id: int,
+        enrollment_id: int,
     ) -> List[Progress]:
-        """Get all progress records for a user in a course."""
+        """Get all progress records for an enrollment."""
         result = await self.db.execute(
-            select(Progress).where(
-                Progress.user_id == user_id,
-                Progress.course_id == course_id,
-            )
+            select(Progress)
+            .where(Progress.enrollment_id == enrollment_id)
+            .order_by(Progress.updated_at.desc())
         )
         return list(result.scalars().all())
 
-    async def get_completed_item_ids(
+    async def get_completed_items(
         self,
-        user_id: int,
-        course_id: int,
-        item_type: str,
-    ) -> List[str]:
-        """Get list of completed item IDs for a specific type."""
-        result = await self.db.execute(
-            select(Progress.item_id).where(
-                Progress.user_id == user_id,
-                Progress.course_id == course_id,
-                Progress.item_type == item_type,
-            )
-        )
-        return [row[0] for row in result.fetchall()]
-
-    async def count_completed(
-        self,
-        user_id: int,
-        course_id: int,
+        enrollment_id: int,
         item_type: Optional[str] = None,
-    ) -> int:
-        """Count completed items for a user in a course."""
-        query = select(func.count()).select_from(Progress).where(
-            Progress.user_id == user_id,
-            Progress.course_id == course_id,
+    ) -> List[Progress]:
+        """Get all completed items (progress_percentage = 100) for an enrollment."""
+        query = select(Progress).where(
+            Progress.enrollment_id == enrollment_id,
+            Progress.completed_at.isnot(None),
         )
         if item_type:
             query = query.where(Progress.item_type == item_type)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
 
+    async def count_completed(
+        self,
+        enrollment_id: int,
+        item_type: Optional[str] = None,
+    ) -> int:
+        """Count completed items for an enrollment."""
+        query = select(func.count()).select_from(Progress).where(
+            Progress.enrollment_id == enrollment_id,
+            Progress.completed_at.isnot(None),
+        )
+        if item_type:
+            query = query.where(Progress.item_type == item_type)
         result = await self.db.execute(query)
         return result.scalar() or 0
 
-    async def delete_progress(
+    async def delete_enrollment_progress(
         self,
-        user_id: int,
-        course_id: int,
+        enrollment_id: int,
     ) -> int:
-        """Delete all progress for a user in a course."""
+        """Delete all progress for an enrollment."""
         result = await self.db.execute(
             Progress.__table__.delete().where(
-                Progress.user_id == user_id,
-                Progress.course_id == course_id,
+                Progress.enrollment_id == enrollment_id,
             )
         )
         await self.db.commit()

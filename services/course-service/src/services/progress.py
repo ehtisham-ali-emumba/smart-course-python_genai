@@ -1,4 +1,5 @@
-from datetime import datetime
+import uuid
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List
 
@@ -9,7 +10,7 @@ from repositories.certificate import CertificateRepository
 from repositories.course_content import CourseContentRepository
 from repositories.enrollment import EnrollmentRepository
 from repositories.progress import ProgressRepository
-from schemas.progress import CourseProgressSummary, ProgressCreate
+from schemas.progress import CourseProgressSummary, ModuleProgressDetail, ProgressCreate
 
 
 class ProgressService:
@@ -22,42 +23,55 @@ class ProgressService:
         self.content_repo = CourseContentRepository(mongo_db)
         self.pg_db = pg_db
 
-    async def mark_completed(
+    # ── UPDATE PROGRESS ───────────────────────────────────────────
+
+    async def update_progress(
         self,
         user_id: int,
         data: ProgressCreate,
     ):
-        """Mark an item as completed."""
-        enrollment = await self.enrollment_repo.get_by_student_and_course(
-            user_id, data.course_id
-        )
+        """
+        Create or update progress for a lesson/quiz/summary.
+
+        Called every time a user interacts with a lesson (e.g., watches more
+        of a video, re-opens a quiz, finishes reading). The frontend sends
+        the current progress_percentage (0–100).
+        """
+        enrollment = await self.enrollment_repo.get_by_id(data.enrollment_id)
         if not enrollment:
-            raise ValueError("User is not enrolled in this course")
+            raise ValueError("Enrollment not found")
+        if enrollment.student_id != user_id:
+            raise ValueError("This enrollment does not belong to you")
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active")
 
-        progress = await self.progress_repo.mark_completed(
+        progress = await self.progress_repo.upsert_progress(
             user_id=user_id,
-            course_id=data.course_id,
+            enrollment_id=data.enrollment_id,
             item_type=data.item_type,
             item_id=data.item_id,
+            progress_percentage=float(data.progress_percentage),
         )
 
+        # Update enrollment timestamps
         update_data = {"last_accessed_at": datetime.utcnow()}
         if enrollment.started_at is None:
             update_data["started_at"] = datetime.utcnow()
         await self.enrollment_repo.update(enrollment.id, update_data)
 
-        await self._check_auto_complete(user_id, data.course_id, enrollment.id)
+        # Check if entire course is now 100%
+        await self._check_auto_complete(enrollment.id, enrollment.course_id)
 
         return progress
+
+    # ── GET PROGRESS ──────────────────────────────────────────────
 
     async def get_course_progress(
         self,
         user_id: int,
         course_id: int,
     ) -> CourseProgressSummary:
-        """Get computed progress for a user in a course. Requires enrollment."""
+        """Get progress by course_id (convenience — looks up enrollment internally)."""
         enrollment = await self.enrollment_repo.get_by_student_and_course(
             user_id, course_id
         )
@@ -66,98 +80,233 @@ class ProgressService:
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active (dropped or suspended)")
 
-        active_items = await self._get_active_items(course_id)
-        total_items = len(active_items)
+        return await self._build_progress_summary(user_id, enrollment.id, course_id)
 
-        completed = await self.progress_repo.get_user_course_progress(
-            user_id, course_id
+    async def get_enrollment_progress(
+        self,
+        user_id: int,
+        enrollment_id: int,
+    ) -> CourseProgressSummary:
+        """Get progress by enrollment_id (primary — use when you have enrollment_id)."""
+        enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
+        if not enrollment:
+            raise ValueError("Enrollment not found")
+        if enrollment.student_id != user_id:
+            raise ValueError("This enrollment does not belong to you")
+        if enrollment.status not in ("active", "completed"):
+            raise ValueError("Enrollment is not active (dropped or suspended)")
+
+        return await self._build_progress_summary(
+            user_id, enrollment.id, enrollment.course_id
         )
-        completed_ids = {(p.item_type, p.item_id) for p in completed}
 
-        completed_active = [
-            item
-            for item in active_items
-            if (item["type"], item["id"]) in completed_ids
-        ]
-        completed_count = len(completed_active)
+    # ── INTERNAL HELPERS ──────────────────────────────────────────
 
-        percentage = Decimal("0.00")
-        if total_items > 0:
-            percentage = Decimal(str(round((completed_count / total_items) * 100, 2)))
+    async def _build_progress_summary(
+        self,
+        user_id: int,
+        enrollment_id: int,
+        course_id: int,
+    ) -> CourseProgressSummary:
+        """
+        Build course progress by aggregating lesson-level progress records.
 
-        cert = await self.cert_repo.get_by_enrollment(enrollment.id)
+        For each module:
+          1. Get all active lessons from MongoDB (the "total" count)
+          2. Match against progress records from PostgreSQL
+          3. Calculate module percentage = avg of all lesson percentages in that module
+             (lessons with no progress row count as 0%)
+
+        Course percentage = avg of ALL lesson percentages across ALL modules.
+        """
+        content = await self.content_repo.get_by_course_id(course_id)
+        modules = content.get("modules", []) if content else []
+
+        progress_records = await self.progress_repo.get_enrollment_progress(
+            enrollment_id
+        )
+        # Build lookup: (item_type, item_id) → Progress record
+        progress_map = {
+            (p.item_type, p.item_id): p for p in progress_records
+        }
+
+        total_lessons_all = 0
+        completed_lessons_all = 0
+        all_lesson_percentages: List[float] = []
+        module_progress_list: List[ModuleProgressDetail] = []
+
+        for module in modules:
+            if not module.get("is_active", True):
+                continue
+
+            module_lessons = self._get_active_lessons(module)
+            module_total = len(module_lessons)
+            module_completed = 0
+            module_percentages: List[float] = []
+            lesson_details: List[dict] = []
+
+            for lesson_info in module_lessons:
+                record = progress_map.get((lesson_info["type"], lesson_info["id"]))
+                pct = float(record.progress_percentage) if record else 0.0
+                is_done = record is not None and record.completed_at is not None
+
+                if is_done:
+                    module_completed += 1
+
+                module_percentages.append(pct)
+                lesson_details.append({
+                    "item_type": lesson_info["type"],
+                    "item_id": lesson_info["id"],
+                    "title": lesson_info["title"],
+                    "progress_percentage": pct,
+                    "is_completed": is_done,
+                })
+
+            module_pct = Decimal("0.00")
+            if module_percentages:
+                avg = sum(module_percentages) / len(module_percentages)
+                module_pct = Decimal(str(round(avg, 2)))
+
+            module_progress_list.append(
+                ModuleProgressDetail(
+                    module_id=str(module.get("module_id")),
+                    module_title=module.get("title", ""),
+                    total_lessons=module_total,
+                    completed_lessons=module_completed,
+                    progress_percentage=module_pct,
+                    lessons=lesson_details,
+                    is_complete=(module_total > 0 and module_completed == module_total),
+                )
+            )
+
+            total_lessons_all += module_total
+            completed_lessons_all += module_completed
+            all_lesson_percentages.extend(module_percentages)
+
+        course_pct = Decimal("0.00")
+        if all_lesson_percentages:
+            avg = sum(all_lesson_percentages) / len(all_lesson_percentages)
+            course_pct = Decimal(str(round(avg, 2)))
+
+        cert = await self.cert_repo.get_by_enrollment(enrollment_id)
         has_certificate = cert is not None and not cert.is_revoked
-
-        completed_lessons = [p.item_id for p in completed if p.item_type == "lesson"]
-        completed_quizzes = [p.item_id for p in completed if p.item_type == "quiz"]
-        completed_summaries = [p.item_id for p in completed if p.item_type == "summary"]
 
         return CourseProgressSummary(
             course_id=course_id,
             user_id=user_id,
-            enrollment_id=enrollment.id,
-            total_items=total_items,
-            completed_items=completed_count,
-            completion_percentage=percentage,
-            completed_lessons=completed_lessons,
-            completed_quizzes=completed_quizzes,
-            completed_summaries=completed_summaries,
+            enrollment_id=enrollment_id,
+            total_lessons=total_lessons_all,
+            completed_lessons=completed_lessons_all,
+            progress_percentage=course_pct,
+            module_progress=module_progress_list,
             has_certificate=has_certificate,
-            is_complete=percentage >= 100,
+            is_complete=(
+                total_lessons_all > 0
+                and completed_lessons_all == total_lessons_all
+            ),
         )
 
-    async def _get_active_items(self, course_id: int) -> List[Dict[str, Any]]:
-        """Get all active content items for a course."""
-        content = await self.content_repo.get_by_course_id(course_id)
-        if not content:
-            return []
-
+    @staticmethod
+    def _get_active_lessons(module: Dict[str, Any]) -> List[Dict[str, str]]:
+        """
+        Extract all active trackable items from a module.
+        Returns list of {type, id, title} dicts.
+        """
         items = []
-        for module in content.get("modules", []):
-            if not module.get("is_active", True):
+        for lesson in module.get("lessons", []):
+            if not lesson.get("is_active", True):
                 continue
+            items.append({
+                "type": "lesson",
+                "id": str(lesson.get("lesson_id")),
+                "title": lesson.get("title", ""),
+            })
 
-            for lesson in module.get("lessons", []):
-                if not lesson.get("is_active", True):
-                    continue
+        for quiz in module.get("quizzes", []):
+            if not quiz.get("is_active", True):
+                continue
+            items.append({
+                "type": "quiz",
+                "id": str(quiz.get("quiz_id")),
+                "title": quiz.get("title", ""),
+            })
 
-                items.append({
-                    "type": "lesson",
-                    "id": str(lesson.get("lesson_id")),
-                })
-
-            for quiz in module.get("quizzes", []):
-                if not quiz.get("is_active", True):
-                    continue
-                items.append({
-                    "type": "quiz",
-                    "id": str(quiz.get("quiz_id")),
-                })
-
-            for summary in module.get("summaries", []):
-                if not summary.get("is_active", True):
-                    continue
-                items.append({
-                    "type": "summary",
-                    "id": str(summary.get("summary_id")),
-                })
+        for summary in module.get("summaries", []):
+            if not summary.get("is_active", True):
+                continue
+            items.append({
+                "type": "summary",
+                "id": str(summary.get("summary_id")),
+                "title": summary.get("title", ""),
+            })
 
         return items
 
     async def _check_auto_complete(
         self,
-        user_id: int,
-        course_id: int,
         enrollment_id: int,
+        course_id: int,
     ) -> None:
-        """Check if course should be marked as completed."""
-        progress = await self.get_course_progress(user_id, course_id)
+        """
+        After each progress update, check if all lessons are at 100%.
+        If yes → mark enrollment completed + auto-issue certificate.
+        """
+        enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
+        if not enrollment or enrollment.status == "completed":
+            return
 
-        if progress.completion_percentage >= 100 and not progress.has_certificate:
-            await self.enrollment_repo.update(
-                enrollment_id,
-                {
-                    "status": "completed",
-                    "completed_at": datetime.utcnow(),
-                },
-            )
+        content = await self.content_repo.get_by_course_id(course_id)
+        if not content:
+            return
+
+        modules = content.get("modules", [])
+        all_items = []
+        for module in modules:
+            if not module.get("is_active", True):
+                continue
+            all_items.extend(self._get_active_lessons(module))
+
+        if not all_items:
+            return
+
+        progress_records = await self.progress_repo.get_enrollment_progress(
+            enrollment_id
+        )
+        completed_set = {
+            (p.item_type, p.item_id)
+            for p in progress_records
+            if p.completed_at is not None
+        }
+
+        all_done = all(
+            (item["type"], item["id"]) in completed_set
+            for item in all_items
+        )
+
+        if not all_done:
+            return
+
+        # All items at 100% — mark enrollment completed
+        await self.enrollment_repo.update(
+            enrollment_id,
+            {
+                "status": "completed",
+                "completed_at": datetime.utcnow(),
+            },
+        )
+
+        # Auto-issue certificate (only if one doesn't already exist)
+        existing_cert = await self.cert_repo.get_by_enrollment(enrollment_id)
+        if existing_cert:
+            return
+
+        cert_data = {
+            "enrollment_id": enrollment_id,
+            "certificate_number": f"SC-{uuid.uuid4().hex[:12].upper()}",
+            "issue_date": date.today(),
+            "verification_code": uuid.uuid4().hex[:8].upper(),
+            "grade": None,
+            "score_percentage": Decimal("100.00"),
+            "issued_by_id": None,
+        }
+        await self.cert_repo.create(cert_data)

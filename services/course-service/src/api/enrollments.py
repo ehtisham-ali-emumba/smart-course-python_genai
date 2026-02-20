@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_current_user_id
+from api.dependencies import get_authenticated_user, get_current_user_id
 from core.database import get_db
 from schemas.enrollment import (
     EnrollmentCreate,
@@ -16,10 +16,16 @@ router = APIRouter()
 @router.post("/", response_model=EnrollmentResponse, status_code=status.HTTP_201_CREATED)
 async def enroll(
     data: EnrollmentCreate,
-    user_id: int = Depends(get_current_user_id),
+    user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Enroll the current user in a course."""
+    """Enroll the current user in a course. Instructors cannot enroll as students."""
+    user_id, role = user
+    if role == "instructor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Instructors cannot enroll in courses. Use a student account to enroll.",
+        )
     service = EnrollmentService(db)
     try:
         enrollment = await service.enroll_student(user_id, data)

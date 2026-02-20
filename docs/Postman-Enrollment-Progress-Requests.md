@@ -94,11 +94,17 @@ No body required.
 
 ## Progress
 
-Progress is tracked per lesson/quiz/summary. You must be enrolled in the course to record progress.
+Progress is tracked per lesson/quiz/summary with partial progress (0–100%). You must be enrolled and have an active enrollment to record progress.
 
-**`item_id`:** Use the ObjectId string from the course content (e.g. from `GET /courses/{course_id}/content` — each lesson has a `lesson_id`).
+**`enrollment_id`:** From `POST /course/enrollments/` response (`id`) or `GET /course/enrollments/my-enrollments` (each item has `id`).
 
-### 1. Mark Lesson as Completed
+**`item_id`:** MongoDB ObjectId from course content (e.g. from `GET /courses/{course_id}/content` — each lesson has `lesson_id`, quiz has `quiz_id`, summary has `summary_id`).
+
+When `progress_percentage` reaches 100, the item is marked completed. When ALL items reach 100%, the enrollment is auto-completed and a certificate is auto-issued.
+
+---
+
+### 1. Update Progress (Mark Lesson/Quiz/Summary)
 
 **Method:** `POST`  
 **URL:** `http://localhost:8000/course/progress`
@@ -112,45 +118,81 @@ Progress is tracked per lesson/quiz/summary. You must be enrolled in the course 
 **Body (raw JSON):**
 ```json
 {
-  "course_id": 4,
+  "enrollment_id": 12,
   "item_type": "lesson",
-  "item_id": "674a1b2c3d4e5f6a7b8c9d0e"
+  "item_id": "674a1b2c3d4e5f6a7b8c9d0e",
+  "progress_percentage": 100
 }
 ```
 
-**Required:** `course_id`, `item_type`, `item_id`  
+**Required:** `enrollment_id`, `item_type`, `item_id`, `progress_percentage`  
 **`item_type`:** One of `lesson`, `quiz`, `summary`  
-**`item_id`:** The ObjectId string of the lesson/quiz/summary (from course content response)
+**`item_id`:** MongoDB ObjectId string of the lesson/quiz/summary (from course content)  
+**`progress_percentage`:** 0–100 (Decimal). At 100, item is marked completed (`completed_at` set).
+
+**Partial progress example** (e.g. watched 50% of a video):
+```json
+{
+  "enrollment_id": 12,
+  "item_type": "lesson",
+  "item_id": "674a1b2c3d4e5f6a7b8c9d0e",
+  "progress_percentage": 50
+}
+```
 
 ---
 
-### 2. Get Course Progress Summary
+### 2. Get Progress by Enrollment ID
 
 **Method:** `GET`  
-**URL:** `http://localhost:8000/course/progress/{course_id}`
+**URL:** `http://localhost:8000/course/progress/enrollment/{enrollment_id}`
 
 **Headers:**
 | Key | Value |
 |-----|-------|
 | Authorization | Bearer \<your_jwt_token\> |
 
-**Example:** `http://localhost:8000/course/progress/4`
+**Example:** `http://localhost:8000/course/progress/enrollment/12`
 
-**Requires:** You must be enrolled in the course. Returns **404** with message "User is not enrolled in this course" or "Enrollment is not active (dropped or suspended)" if not enrolled or enrollment is dropped.
+**Requires:** Enrollment must belong to you and be active/completed. Returns **404** if not found or not yours.
 
 **Response includes:**
-- `total_items` — count of active lessons/quizzes/summaries in the course
-- `completed_items` — count you've completed
-- `completion_percentage`
-- `completed_lessons` — array of lesson IDs you've finished
-- `completed_quizzes`, `completed_summaries`
+- `course_id`, `user_id`, `enrollment_id`
+- `total_lessons`, `completed_lessons`, `progress_percentage`
+- `module_progress` — per-module breakdown with lesson details
 - `has_certificate`, `is_complete`
+
+---
+
+### 3. Get Progress by Course ID
+
+**Method:** `GET`  
+**URL:** `http://localhost:8000/course/progress/course/{course_id}`
+
+**Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer \<your_jwt_token\> |
+
+**Example:** `http://localhost:8000/course/progress/course/4`
+
+**Requires:** You must be enrolled in the course with an active/completed enrollment. Returns **404** with "User is not enrolled in this course" or "Enrollment is not active (dropped or suspended)" if not eligible.
+
+**Response:** Same structure as "Get Progress by Enrollment ID".
 
 ---
 
 ## Flow Example
 
-1. **Enroll:** `POST /course/enrollments/` with `{"course_id": 4}`
-2. **Get content:** `GET /courses/4/content` → copy `lesson_id` from each lesson in the response
-3. **Mark complete:** `POST /course/progress` with `{"course_id": 4, "item_type": "lesson", "item_id": "<lesson_id>"}`
-4. **Check progress:** `GET /course/progress/4`
+1. **Enroll:** `POST /course/enrollments/` with `{"course_id": 4}` → response includes `id` (enrollment_id)
+2. **Get content:** `GET /courses/4/content` → copy `lesson_id`, `quiz_id`, `summary_id` for each item
+3. **Update progress:** `POST /course/progress` with:
+   ```json
+   {
+     "enrollment_id": 12,
+     "item_type": "lesson",
+     "item_id": "<lesson_id>",
+     "progress_percentage": 100
+   }
+   ```
+4. **Check progress:** `GET /course/progress/enrollment/12` or `GET /course/progress/course/4`
