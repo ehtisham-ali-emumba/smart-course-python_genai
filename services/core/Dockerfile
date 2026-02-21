@@ -7,4 +7,5 @@ COPY services/core/src/ ./src/
 RUN pip install --no-cache-dir .
 ENV PYTHONPATH=/app/src
 
-CMD ["python", "-m", "core_service.consumers.event_bridge"]
+# Core is a library; no standalone process. Placeholder for potential future use.
+CMD ["sleep", "infinity"]

@@ -33,8 +33,7 @@
   - `kafka` — Event streaming broker (port 9092)
   - `kafka-init` — Creates topics: user.events, course.events, enrollment.events, progress.events, notification.events
   - `rabbitmq` — Task queue broker (ports 5672, 15672)
-  - `core-event-bridge` — Kafka consumer → Celery dispatcher
-  - `core-celery-worker` — Celery worker (email_queue, notification_queue, certificate_queue)
+  - `celery-worker` — Celery worker (email_queue, notification_queue, certificate_queue)
 - **Volumes:** `rabbitmq_data`
 - **`.env`:** Added `CELERY_RESULT_BACKEND`
 
@@ -70,9 +69,7 @@
 
 ## 2. Kafka → Processing Routing
 
-**Core Event Bridge:** Analytics/logging only (no Celery tasks).
-
-**Notification Service (Kafka consumer, fire-and-forget):**
+**Notification Service (Kafka consumer):**
 
 | Kafka Event | Actions (inline mock) |
 |-------------|------------------------|
@@ -91,7 +88,7 @@
 
 | File | Change |
 |------|--------|
-| `docker-compose.yml` | Kafka, Zookeeper, kafka-init, RabbitMQ, core-event-bridge, core-celery-worker; user/course build context + Kafka env/deps; rabbitmq_data volume |
+| `docker-compose.yml` | Kafka, Zookeeper, kafka-init, RabbitMQ, celery-worker; user/course build context + Kafka env/deps; rabbitmq_data volume |
 | `.env` | CELERY_RESULT_BACKEND |
 | `services/user-service/Dockerfile` | Repo-root context, install core, updated COPY paths |
 | `services/user-service/src/user_service/config.py` | KAFKA_BOOTSTRAP_SERVERS |
@@ -128,8 +125,8 @@ curl -X POST http://localhost:8000/auth/register \
 docker compose exec kafka kafka-console-consumer --topic user.events --from-beginning --max-messages 1 --bootstrap-server localhost:29092
 
 # 3. Check logs
-docker compose logs core-event-bridge --tail=20
-docker compose logs core-celery-worker --tail=20
+docker compose logs notification-service --tail=20
+docker compose logs celery-worker --tail=20
 ```
 
 ---
