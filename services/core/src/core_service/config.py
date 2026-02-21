@@ -7,8 +7,6 @@ class CoreSettings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://:smartcourse_secret@redis:6379/2"
     SCHEMA_REGISTRY_URL: str = "http://schema-registry:8081"
 
-    KAFKA_CONSUMER_GROUP: str = "core-event-bridge"
-
     model_config = {"env_prefix": "", "case_sensitive": True}
 
 

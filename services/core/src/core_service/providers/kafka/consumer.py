@@ -16,9 +16,9 @@ class EventConsumer:
 
     Usage:
         consumer = EventConsumer(
-            topics=Topics.ALL,
+            topics=[Topics.USER, Topics.COURSE],
             bootstrap_servers="kafka:29092",
-            group_id="core-event-bridge",
+            group_id="my-service",
         )
         await consumer.start(handler=my_handler_fn)
         await consumer.stop()

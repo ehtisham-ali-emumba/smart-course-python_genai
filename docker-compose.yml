@@ -287,32 +287,6 @@ services:
   # ═══════════════════════════════════════════════════════════════
   #  API GATEWAY — Nginx reverse proxy
   # ═══════════════════════════════════════════════════════════════
-  # ═══════════════════════════════════════════════════════════════
-  #  CORE SERVICE — Event Bridge (Kafka Consumer)
-  # ═══════════════════════════════════════════════════════════════
-
-  core-event-bridge:
-    build:
-      context: .
-      dockerfile: services/core/Dockerfile
-    container_name: smartcourse-core-event-bridge
-    command: python -m core_service.consumers.event_bridge
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
-      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
-    depends_on:
-      kafka:
-        condition: service_healthy
-      schema-registry:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - smartcourse-network
 
   api-gateway:
     build:
