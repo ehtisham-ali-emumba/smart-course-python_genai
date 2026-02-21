@@ -1,27 +1,29 @@
-"""Kafka event handlers for email, in-app notifications, and certificate generation."""
+"""Kafka event handlers — dispatch work to Celery via RabbitMQ."""
 
 import sys
 from typing import Any
 
+from celery import Celery
 from core_service.events.envelope import EventEnvelope
 
-from notification_service.mocks import (
-    MockCertificateGenerator,
-    MockEmailService,
-    MockNotificationService,
-)
-
-mock_notification = MockNotificationService()
-mock_certificate = MockCertificateGenerator()
-mock_email = MockEmailService()
+from notification_service.config import settings
 
 
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+celery_app = Celery(broker=settings.RABBITMQ_URL)
+
+
 class NotificationEventHandlers:
-    """Handles Kafka events for email, notifications, and certificate mocks."""
+    """Receives Kafka events and dispatches Celery tasks to RabbitMQ.
+
+    This is the bridge between Kafka (events) and RabbitMQ (tasks).
+    The Kafka consumer tells us WHAT happened.
+    We decide WHAT WORK to do and put it in the right queue.
+    The Celery worker does the actual work.
+    """
 
     def __init__(self) -> None:
         self._handlers: dict[str, Any] = {
@@ -41,162 +43,174 @@ class NotificationEventHandlers:
             _log(f"[notification-service] {event.event_type} from {topic} (id={event.event_id})")
             await handler(event)
 
+    # ── Dispatchers ──────────────────────────────────────────
+
     async def _on_user_registered(self, event: EventEnvelope) -> None:
         p = event.payload
-        mock_email.send(
-            to=p["email"],
-            subject=f"Welcome to SmartCourse, {p.get('first_name', '')}!",
-            body=(
-                f"Hi {p.get('first_name', '')},\n"
-                f"\n"
-                f"Welcome to SmartCourse! Your account has been created\n"
-                f"successfully. Start exploring our course catalog and begin\n"
-                f"your learning journey today.\n"
-                f"\n"
-                f"-- The SmartCourse Team"
-            ),
-            email_type="WELCOME_EMAIL",
-            metadata={"user_id": p["user_id"]},
+        celery_app.send_task(
+            "notification_service.tasks.email.send_welcome_email",
+            kwargs={
+                "user_id": p["user_id"],
+                "email": p["email"],
+                "first_name": p.get("first_name", ""),
+            },
+            queue="email_queue",
         )
-        mock_notification.create(
-            user_id=p["user_id"],
-            title="Welcome to SmartCourse!",
-            message=f"Hi {p.get('first_name', '')}! Start exploring courses and begin your learning journey.",
-            notification_type="welcome",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["user_id"],
+                "title": "Welcome to SmartCourse!",
+                "message": f"Hi {p.get('first_name', '')}! Start exploring courses.",
+                "notification_type": "welcome",
+            },
+            queue="notification_queue",
         )
+        _log(f"[dispatch] user.registered → email_queue + notification_queue")
 
     async def _on_course_published(self, event: EventEnvelope) -> None:
         p = event.payload
-        mock_email.send(
-            to=f"instructor-{p['instructor_id']}@smartcourse.local",
-            subject=f"Your Course is Live: {p.get('title', '')}",
-            body=(
-                f"Great news!\n"
-                f"\n"
-                f"Your course '{p.get('title', '')}' is now published\n"
-                f"and available to students on the platform.\n"
-                f"\n"
-                f"Share the link and start building your audience.\n"
-                f"\n"
-                f"-- The SmartCourse Team"
-            ),
-            email_type="COURSE_PUBLISHED",
-            metadata={"instructor_id": p["instructor_id"], "course_id": p["course_id"]},
+        celery_app.send_task(
+            "notification_service.tasks.email.send_enrollment_confirmation",
+            kwargs={
+                "student_id": p["instructor_id"],
+                "course_id": p["course_id"],
+                "course_title": p.get("title", ""),
+                "email": f"instructor-{p['instructor_id']}@smartcourse.local",
+            },
+            queue="email_queue",
         )
-        mock_notification.create(
-            user_id=p["instructor_id"],
-            title="Course Published!",
-            message=f"Your course '{p.get('title', '')}' is now live and available to students.",
-            notification_type="course_published",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["instructor_id"],
+                "title": "Course Published!",
+                "message": f"Your course '{p.get('title', '')}' is now live.",
+                "notification_type": "course_published",
+            },
+            queue="notification_queue",
         )
 
     async def _on_course_archived(self, event: EventEnvelope) -> None:
         p = event.payload
-        mock_notification.create(
-            user_id=p["instructor_id"],
-            title="Course Archived",
-            message=f"Your course '{p.get('title', '')}' has been archived.",
-            notification_type="course_archived",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["instructor_id"],
+                "title": "Course Archived",
+                "message": f"Your course '{p.get('title', '')}' has been archived.",
+                "notification_type": "course_archived",
+            },
+            queue="notification_queue",
         )
 
     async def _on_enrollment_created(self, event: EventEnvelope) -> None:
         p = event.payload
         email = p.get("email") or f"student-{p['student_id']}@smartcourse.local"
-        mock_email.send(
-            to=email,
-            subject=f"Enrollment Confirmed: {p.get('course_title', 'your course')}",
-            body=(
-                f"You're in!\n"
-                f"\n"
-                f"You have successfully enrolled in '{p.get('course_title', 'your course')}'.\n"
-                f"Head over to your dashboard to start the first module.\n"
-                f"\n"
-                f"Happy learning!\n"
-                f"-- The SmartCourse Team"
-            ),
-            email_type="ENROLLMENT_CONFIRMATION",
-            metadata={"student_id": p["student_id"], "course_id": p["course_id"]},
+        celery_app.send_task(
+            "notification_service.tasks.email.send_enrollment_confirmation",
+            kwargs={
+                "student_id": p["student_id"],
+                "course_id": p["course_id"],
+                "course_title": p.get("course_title", "your course"),
+                "email": email,
+            },
+            queue="email_queue",
         )
-        mock_notification.create(
-            user_id=p["student_id"],
-            title="Enrollment Confirmed!",
-            message=f"You're now enrolled in '{p.get('course_title', 'a course')}'. Start learning!",
-            notification_type="enrollment",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["student_id"],
+                "title": "Enrollment Confirmed!",
+                "message": f"You're enrolled in '{p.get('course_title', 'a course')}'.",
+                "notification_type": "enrollment",
+            },
+            queue="notification_queue",
         )
 
     async def _on_enrollment_dropped(self, event: EventEnvelope) -> None:
         p = event.payload
-        mock_notification.create(
-            user_id=p["student_id"],
-            title="Course Dropped",
-            message="You've dropped a course. You can re-enroll anytime.",
-            notification_type="enrollment",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["student_id"],
+                "title": "Course Dropped",
+                "message": "You've dropped a course. You can re-enroll anytime.",
+                "notification_type": "enrollment",
+            },
+            queue="notification_queue",
         )
 
     async def _on_enrollment_completed(self, event: EventEnvelope) -> None:
         p = event.payload
         email = p.get("email") or f"student-{p['student_id']}@smartcourse.local"
-        mock_email.send(
-            to=email,
-            subject=f"Congratulations! You completed {p.get('course_title', 'your course')}",
-            body=(
-                f"Amazing work!\n"
-                f"\n"
-                f"You have completed all modules in '{p.get('course_title', 'your course')}'.\n"
-                f"Your certificate is being generated and will be\n"
-                f"available in your profile shortly.\n"
-                f"\n"
-                f"Keep up the great work!\n"
-                f"-- The SmartCourse Team"
-            ),
-            email_type="COURSE_COMPLETION",
-            metadata={"student_id": p["student_id"], "course_id": p["course_id"]},
+        celery_app.send_task(
+            "notification_service.tasks.email.send_course_completion_email",
+            kwargs={
+                "student_id": p["student_id"],
+                "course_id": p["course_id"],
+                "course_title": p.get("course_title", "your course"),
+                "email": email,
+            },
+            queue="email_queue",
         )
-        mock_notification.create(
-            user_id=p["student_id"],
-            title="Course Completed!",
-            message=f"Congratulations! You've completed '{p.get('course_title', 'a course')}'. Your certificate is being prepared.",
-            notification_type="completion",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["student_id"],
+                "title": "Course Completed!",
+                "message": f"Congratulations on completing '{p.get('course_title', 'a course')}'!",
+                "notification_type": "completion",
+            },
+            queue="notification_queue",
         )
 
     async def _on_certificate_issued(self, event: EventEnvelope) -> None:
         p = event.payload
         email = p.get("email") or f"student-{p['student_id']}@smartcourse.local"
-        mock_email.send(
-            to=email,
-            subject=f"Your Certificate is Ready! #{p['certificate_number']}",
-            body=(
-                f"Your certificate has been issued!\n"
-                f"\n"
-                f"Certificate:    {p['certificate_number']}\n"
-                f"Verification:   {p['verification_code']}\n"
-                f"\n"
-                f"Download it from your profile or share the\n"
-                f"verification code with employers.\n"
-                f"\n"
-                f"-- The SmartCourse Team"
-            ),
-            email_type="CERTIFICATE_READY",
-            metadata={"student_id": p["student_id"], "cert": p["certificate_number"]},
+
+        # 3 tasks dispatched for certificate.issued
+        celery_app.send_task(
+            "notification_service.tasks.email.send_certificate_ready_email",
+            kwargs={
+                "student_id": p["student_id"],
+                "certificate_number": p["certificate_number"],
+                "verification_code": p["verification_code"],
+                "email": email,
+            },
+            queue="email_queue",
         )
-        mock_notification.create(
-            user_id=p["student_id"],
-            title="Certificate Ready!",
-            message=f"Your certificate #{p['certificate_number']} is ready. Download it from your profile.",
-            notification_type="certificate",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p["student_id"],
+                "title": "Certificate Ready!",
+                "message": f"Certificate #{p['certificate_number']} is ready to download.",
+                "notification_type": "certificate",
+            },
+            queue="notification_queue",
         )
-        mock_certificate.generate(
-            certificate_id=p["certificate_id"],
-            enrollment_id=p["enrollment_id"],
-            student_name=p.get("student_name", ""),
-            course_title=p.get("course_title", ""),
+        celery_app.send_task(
+            "notification_service.tasks.certificate.generate_certificate_pdf",
+            kwargs={
+                "certificate_id": p["certificate_id"],
+                "enrollment_id": p["enrollment_id"],
+                "student_name": p.get("student_name", ""),
+                "course_title": p.get("course_title", ""),
+            },
+            queue="certificate_queue",
         )
+        _log(f"[dispatch] certificate.issued → email_queue + notification_queue + certificate_queue")
 
     async def _on_certificate_revoked(self, event: EventEnvelope) -> None:
         p = event.payload
-        mock_notification.create(
-            user_id=p.get("student_id", 0),
-            title="Certificate Revoked",
-            message=f"Certificate for enrollment #{p['enrollment_id']} has been revoked. Reason: {p.get('reason', 'N/A')}",
-            notification_type="certificate",
+        celery_app.send_task(
+            "notification_service.tasks.notification.create_in_app_notification",
+            kwargs={
+                "user_id": p.get("student_id", 0),
+                "title": "Certificate Revoked",
+                "message": f"Certificate for enrollment #{p['enrollment_id']} revoked.",
+                "notification_type": "certificate",
+            },
+            queue="notification_queue",
         )

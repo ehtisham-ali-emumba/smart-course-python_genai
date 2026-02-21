@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
+    SCHEMA_REGISTRY_URL: str = "http://schema-registry:8081"
 
     class Config:
         env_file = ".env"

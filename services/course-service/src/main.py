@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     producer = EventProducer(
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
         service_name="course-service",
+        schema_registry_url=settings.SCHEMA_REGISTRY_URL,
     )
     try:
         await producer.start()

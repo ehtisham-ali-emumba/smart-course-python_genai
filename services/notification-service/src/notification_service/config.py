@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     # Kafka — fire-and-forget event consumption for notifications & certificates
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
+    RABBITMQ_URL: str = "amqp://smartcourse:smartcourse_secret@rabbitmq:5672//"
+    CELERY_RESULT_BACKEND: str = "redis://:smartcourse_secret@redis:6379/2"
 
     class Config:
         env_file = ".env"

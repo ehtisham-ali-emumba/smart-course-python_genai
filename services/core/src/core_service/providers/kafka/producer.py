@@ -5,24 +5,32 @@ from typing import Any
 from aiokafka import AIOKafkaProducer
 
 from core_service.events.envelope import EventEnvelope
+from core_service.providers.kafka.schema_registry import SchemaRegistryClient
+from core_service.providers.kafka.schema_utils import get_envelope_schema
 
 logger = logging.getLogger(__name__)
 
 
 class EventProducer:
-    """Async Kafka producer that wraps every message in a standard EventEnvelope.
+    """Async Kafka producer with Schema Registry validation.
 
-    Lifecycle:
-        producer = EventProducer(bootstrap_servers="kafka:29092", service_name="user-service")
-        await producer.start()       # call in FastAPI lifespan startup
-        await producer.publish(...)  # call from API endpoints
-        await producer.stop()        # call in FastAPI lifespan shutdown
+    On startup, registers the EventEnvelope JSON schema with Schema Registry.
+    On each publish, the message is still validated by Pydantic (EventEnvelope),
+    and Schema Registry ensures all consumers know the expected shape.
     """
 
-    def __init__(self, bootstrap_servers: str, service_name: str):
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        service_name: str,
+        schema_registry_url: str = "",
+    ):
         self._bootstrap_servers = bootstrap_servers
         self._service_name = service_name
         self._producer: AIOKafkaProducer | None = None
+        self._schema_registry: SchemaRegistryClient | None = None
+        if schema_registry_url:
+            self._schema_registry = SchemaRegistryClient(schema_registry_url)
 
     async def start(self) -> None:
         self._producer = AIOKafkaProducer(
@@ -32,6 +40,18 @@ class EventProducer:
         )
         await self._producer.start()
         logger.info("Kafka producer started for %s", self._service_name)
+
+    async def _ensure_schema_registered(self, topic: str) -> None:
+        """Register the EventEnvelope schema for this topic (once)."""
+        if not self._schema_registry:
+            return
+        subject = f"{topic}-value"
+        try:
+            await self._schema_registry.register_schema(
+                subject, get_envelope_schema()
+            )
+        except Exception:
+            logger.warning("Schema registration failed for %s (non-fatal)", subject)
 
     async def stop(self) -> None:
         if self._producer:
@@ -49,6 +69,8 @@ class EventProducer:
         if not self._producer:
             logger.warning("Producer not started — dropping event %s", event_type)
             return
+
+        await self._ensure_schema_registered(topic)
 
         envelope = EventEnvelope(
             event_type=event_type,
