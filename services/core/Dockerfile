@@ -2,6 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install shared library used by core-service imports
+COPY shared/pyproject.toml /tmp/shared/pyproject.toml
+COPY shared/src/shared /tmp/shared/src/shared
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir /tmp/shared
+
 COPY services/core/pyproject.toml .
 COPY services/core/src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \

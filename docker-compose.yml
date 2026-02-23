@@ -99,6 +99,63 @@ services:
     networks:
       - smartcourse-network
 
+  # ═══════════════════════════════════════════════════════════════
+  #  TEMPORAL — Workflow Orchestration
+  # ═══════════════════════════════════════════════════════════════
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: smartcourse-temporal
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-smartcourse}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-smartcourse_secret}
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - smartcourse-network
+
+  temporal-ui:
+    image: temporalio/ui:2.26.2
+    container_name: smartcourse-temporal-ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:latest
+    container_name: smartcourse-temporal-admin
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+    stdin_open: true
+    tty: true
+
   kafka-init:
     image: confluentinc/cp-kafka:7.6.0
     container_name: smartcourse-kafka-init
@@ -253,9 +310,19 @@ services:
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
       - LOG_LEVEL=INFO
+      # Temporal settings
       - TEMPORAL_HOST=${TEMPORAL_HOST:-temporal:7233}
-      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-smartcourse}
-      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-smartcourse-core}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-smartcourse-enrollment}
+      # Mock activity settings (adjust for testing)
+      - MOCK_ACTIVITY_DELAY_MIN=0.5
+      - MOCK_ACTIVITY_DELAY_MAX=2.0
+      - MOCK_ACTIVITY_FAIL_RATE=0.0
+      # NOTE: Service URLs not needed in mock mode
+      # Uncomment when switching to real HTTP activity calls:
+      # - USER_SERVICE_URL=http://user-service:8001
+      # - COURSE_SERVICE_URL=http://course-service:8002
+      # - NOTIFICATION_SERVICE_URL=http://notification-service:8005
     depends_on:
       kafka:
         condition: service_healthy
@@ -264,6 +331,8 @@ services:
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      temporal:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]

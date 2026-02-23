@@ -13,6 +13,12 @@ dependencies = [
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "structlog>=24.1.0",
+    # Temporal SDK
+    "temporalio>=1.5.0",
+    # Kafka consumer for workflow triggers
+    "aiokafka>=0.10.0",
+    # NOTE: httpx is NOT needed for mock implementation
+    # Add "httpx>=0.27.0" later when switching to real HTTP calls
 ]
 
 [tool.setuptools.packages.find]

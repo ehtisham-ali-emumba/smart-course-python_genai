@@ -1,0 +1,9 @@
+# Temporal Dynamic Configuration
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+
+limit.maxIDLength:
+  - value: 1000
+
+history.maximumSignalCountPerExecution:
+  - value: 10000
