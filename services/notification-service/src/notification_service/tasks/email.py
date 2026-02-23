@@ -1,112 +1,104 @@
+"""Email Celery tasks for notification service."""
+
 from notification_service.mocks import MockEmailService
 from notification_service.worker import celery_app
 
-mock_email = MockEmailService()
-
 
 @celery_app.task(
-    bind=True,
-    max_retries=3,
-    name="notification_service.tasks.email.send_welcome_email",
+    bind=True, max_retries=3, name="notification_service.tasks.email.send_welcome_email"
 )
 def send_welcome_email(self, user_id: int, email: str, first_name: str):
-    """Send welcome email after user registration.
-
-    Retries up to 3 times with exponential backoff on failure.
-    In production: replace mock with SMTP/SendGrid.
+    """
+    Triggered by: user.registered event
+    Purpose: Send welcome email to new user
+    Retry: 3 times with exponential backoff (60s, 120s, 240s)
     """
     try:
-        return mock_email.send(
+        return MockEmailService.send(
             to=email,
             subject=f"Welcome to SmartCourse, {first_name}!",
             body=(
                 f"Hi {first_name},\n\n"
-                f"Welcome to SmartCourse! Your account has been created\n"
-                f"successfully. Start exploring our course catalog.\n\n"
-                f"-- The SmartCourse Team"
+                "Welcome to SmartCourse.\n"
+                "Your account is ready and you can start learning now."
             ),
-            email_type="WELCOME_EMAIL",
+            email_type="welcome",
             metadata={"user_id": user_id},
         )
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))
 
 
 @celery_app.task(
-    bind=True,
-    max_retries=3,
-    name="notification_service.tasks.email.send_enrollment_confirmation",
+    bind=True, max_retries=3, name="notification_service.tasks.email.send_enrollment_confirmation"
 )
 def send_enrollment_confirmation(
     self, student_id: int, course_id: int, course_title: str, email: str
 ):
+    """
+    Triggered by: enrollment.created event
+    Purpose: Confirm student's enrollment in a course
+    """
     try:
-        return mock_email.send(
+        return MockEmailService.send(
             to=email,
             subject=f"Enrollment Confirmed: {course_title}",
             body=(
-                f"You're in!\n\n"
-                f"You have successfully enrolled in '{course_title}'.\n"
-                f"Head to your dashboard to start learning.\n\n"
-                f"-- The SmartCourse Team"
+                f"You're successfully enrolled in '{course_title}'.\n\n"
+                "Open your dashboard to start the course."
             ),
-            email_type="ENROLLMENT_CONFIRMATION",
+            email_type="enrollment_confirmation",
             metadata={"student_id": student_id, "course_id": course_id},
         )
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))
 
 
 @celery_app.task(
-    bind=True,
-    max_retries=3,
-    name="notification_service.tasks.email.send_course_completion_email",
+    bind=True, max_retries=3, name="notification_service.tasks.email.send_course_completion_email"
 )
 def send_course_completion_email(
     self, student_id: int, course_id: int, course_title: str, email: str
 ):
+    """
+    Triggered by: enrollment.completed event
+    Purpose: Congratulate student on completing a course
+    """
     try:
-        return mock_email.send(
+        return MockEmailService.send(
             to=email,
             subject=f"Congratulations! You completed {course_title}",
             body=(
-                f"Amazing work!\n\n"
-                f"You've completed all modules in '{course_title}'.\n"
-                f"Your certificate is being generated.\n\n"
-                f"-- The SmartCourse Team"
+                f"Great work completing '{course_title}'.\n\n"
+                "Your achievement has been recorded."
             ),
-            email_type="COURSE_COMPLETION",
+            email_type="course_completion",
             metadata={"student_id": student_id, "course_id": course_id},
         )
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))
 
 
 @celery_app.task(
-    bind=True,
-    max_retries=3,
-    name="notification_service.tasks.email.send_certificate_ready_email",
+    bind=True, max_retries=3, name="notification_service.tasks.email.send_certificate_ready_email"
 )
 def send_certificate_ready_email(
-    self,
-    student_id: int,
-    certificate_number: str,
-    verification_code: str,
-    email: str,
+    self, student_id: int, certificate_number: str, verification_code: str, email: str
 ):
+    """
+    Triggered by: certificate.issued event
+    Purpose: Notify student their certificate is ready for download
+    """
     try:
-        return mock_email.send(
+        return MockEmailService.send(
             to=email,
             subject=f"Your Certificate is Ready! #{certificate_number}",
             body=(
-                f"Your certificate has been issued!\n\n"
-                f"Certificate:    {certificate_number}\n"
-                f"Verification:   {verification_code}\n\n"
-                f"Download it from your profile.\n\n"
-                f"-- The SmartCourse Team"
+                f"Your certificate #{certificate_number} is ready.\n\n"
+                f"Verification code: {verification_code}"
             ),
-            email_type="CERTIFICATE_READY",
-            metadata={"student_id": student_id, "cert": certificate_number},
+            email_type="certificate_ready",
+            metadata={"student_id": student_id, "certificate_number": certificate_number},
         )
     except Exception as exc:
-        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))

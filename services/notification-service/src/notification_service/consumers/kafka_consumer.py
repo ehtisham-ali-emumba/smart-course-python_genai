@@ -3,8 +3,8 @@
 import asyncio
 import sys
 
-from core_service.providers.kafka.consumer import EventConsumer
-from core_service.providers.kafka.topics import Topics
+from shared.kafka.consumer import EventConsumer
+from shared.kafka.topics import Topics
 
 from notification_service.config import settings
 from notification_service.consumers.event_handlers import NotificationEventHandlers
@@ -21,7 +21,9 @@ async def run_notification_consumer() -> None:
     topics = [Topics.USER, Topics.COURSE, Topics.ENROLLMENT]
     attempt = 0
 
-    _log(f"[notification-service] Kafka consumer starting | topics={topics} broker={settings.KAFKA_BOOTSTRAP_SERVERS}")
+    _log(
+        f"[notification-service] Kafka consumer starting | topics={topics} broker={settings.KAFKA_BOOTSTRAP_SERVERS}"
+    )
 
     while True:
         consumer = EventConsumer(
@@ -36,8 +38,10 @@ async def run_notification_consumer() -> None:
             raise
         except Exception as e:
             attempt += 1
-            delay = min(2 ** attempt, MAX_RETRY_DELAY)
-            _log(f"[notification-service] Consumer error (attempt {attempt}), retry in {delay}s: {e!r}")
+            delay = min(2**attempt, MAX_RETRY_DELAY)
+            _log(
+                f"[notification-service] Consumer error (attempt {attempt}), retry in {delay}s: {e!r}"
+            )
             await asyncio.sleep(delay)
         else:
             break

@@ -1,1 +1,1 @@
-"""SmartCourse Core — event-driven infrastructure."""
+"""SmartCourse Core Service package."""

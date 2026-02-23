@@ -10,7 +10,7 @@ from repositories.enrollment import EnrollmentRepository
 from schemas.certificate import CertificateCreate
 
 if TYPE_CHECKING:
-    from core_service.providers.kafka.producer import EventProducer
+    from shared.kafka.producer import EventProducer
 
 
 class CertificateService:
@@ -63,8 +63,8 @@ class CertificateService:
         cert = await self.cert_repo.create(cert_data)
 
         if self._producer:
-            from core_service.events.certificate import CertificateIssuedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.certificate import CertificateIssuedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.COURSE,
@@ -120,15 +120,18 @@ class CertificateService:
         if not cert:
             return None
 
-        result = await self.cert_repo.update(certificate_id, {
-            "is_revoked": True,
-            "revoked_at": datetime.utcnow(),
-            "revoked_reason": reason,
-        })
+        result = await self.cert_repo.update(
+            certificate_id,
+            {
+                "is_revoked": True,
+                "revoked_at": datetime.utcnow(),
+                "revoked_reason": reason,
+            },
+        )
 
         if self._producer and result:
-            from core_service.events.certificate import CertificateRevokedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.certificate import CertificateRevokedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.COURSE,

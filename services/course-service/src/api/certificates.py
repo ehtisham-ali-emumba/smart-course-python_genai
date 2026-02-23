@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_authenticated_user, get_event_producer
 from core.database import get_db
-from core_service.providers.kafka.producer import EventProducer
+from shared.kafka.producer import EventProducer
 from schemas.certificate import (
     CertificateCreate,
     CertificateListResponse,

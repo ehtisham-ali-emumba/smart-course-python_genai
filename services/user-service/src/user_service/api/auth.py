@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core_service.events.user import UserLoginPayload, UserRegisteredPayload
-from core_service.providers.kafka.producer import EventProducer
-from core_service.providers.kafka.topics import Topics
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
+from shared.schemas.events.user import UserLoginPayload, UserRegisteredPayload
 from user_service.core.database import get_db
 from user_service.core.security import (
     create_access_token,
@@ -48,7 +48,6 @@ async def register(
             UserRegisteredPayload(
                 user_id=user.id,
                 email=user.email,
-                role=user.role,
                 first_name=user.first_name,
                 last_name=user.last_name,
             ).model_dump(),

@@ -1,1 +1,0 @@
-"""Kafka event streaming provider."""

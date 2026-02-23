@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_authenticated_user, get_current_user_id, get_event_producer
 from core.database import get_db
-from core_service.events.enrollment import (
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
+from shared.schemas.events.enrollment import (
     EnrollmentCreatedPayload,
     EnrollmentDroppedPayload,
     EnrollmentReactivatedPayload,
 )
-from core_service.providers.kafka.producer import EventProducer
-from core_service.providers.kafka.topics import Topics
 from schemas.enrollment import (
     EnrollmentCreate,
     EnrollmentListResponse,
@@ -23,6 +23,7 @@ router = APIRouter()
 @router.post("/", response_model=EnrollmentResponse, status_code=status.HTTP_201_CREATED)
 async def enroll(
     data: EnrollmentCreate,
+    request: Request,
     user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
@@ -37,15 +38,18 @@ async def enroll(
     service = EnrollmentService(db)
     try:
         enrollment = await service.enroll_student(user_id, data)
+        course = await service.course_repo.get_by_id(enrollment.course_id)
+        course_title = course.title if course else f"Course {enrollment.course_id}"
+        student_email = request.headers.get("X-User-Email") or ""
 
         await producer.publish(
             Topics.ENROLLMENT,
             "enrollment.created",
             EnrollmentCreatedPayload(
-                enrollment_id=enrollment.id,
                 student_id=enrollment.student_id,
                 course_id=enrollment.course_id,
-                status=enrollment.status,
+                course_title=course_title,
+                email=student_email,
             ).model_dump(),
             key=str(enrollment.student_id),
         )

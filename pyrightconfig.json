@@ -1,0 +1,15 @@
+{
+  "include": [
+    "services/*/src",
+    "shared/src"
+  ],
+  "extraPaths": [
+    "shared/src",
+    "services/user-service/src",
+    "services/course-service/src",
+    "services/notification-service/src",
+    "services/core/src"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}

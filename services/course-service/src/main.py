@@ -8,7 +8,7 @@ from config import settings
 from core.database import engine
 from core.mongodb import close_mongodb, connect_mongodb
 from core.redis import close_redis, connect_redis, get_redis
-from core_service.providers.kafka.producer import EventProducer
+from shared.kafka.producer import EventProducer
 from models import Certificate, Course, Enrollment, Progress  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
@@ -25,8 +25,6 @@ async def lifespan(app: FastAPI):
 
     producer = EventProducer(
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        service_name="course-service",
-        schema_registry_url=settings.SCHEMA_REGISTRY_URL,
     )
     try:
         await producer.start()

@@ -7,9 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install core service (event-driven infrastructure)
-COPY services/core/ /core/
-RUN pip install --no-cache-dir /core
+# Install shared library (event-driven infrastructure)
+COPY shared/pyproject.toml /tmp/shared/pyproject.toml
+COPY shared/src/shared /tmp/shared/src/shared
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir /tmp/shared
 
 # Copy only pyproject.toml first for better caching
 COPY services/course-service/pyproject.toml .

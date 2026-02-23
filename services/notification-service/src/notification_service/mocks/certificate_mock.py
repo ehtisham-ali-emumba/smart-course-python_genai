@@ -14,6 +14,8 @@ class MockCertificateGenerator:
         student_name: str,
         course_title: str,
     ) -> dict:
+        safe_student_name = str(student_name or "Student")
+        safe_course_title = str(course_title or "Course")
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         output = f"""
@@ -25,11 +27,11 @@ class MockCertificateGenerator:
 ┃                                                                    ┃
 ┃   This certifies that                                              ┃
 ┃                                                                    ┃
-┃               {student_name:^48}     ┃
+┃               {safe_student_name:^48}     ┃
 ┃                                                                    ┃
 ┃   has successfully completed the course                            ┃
 ┃                                                                    ┃
-┃               {course_title:^48}     ┃
+┃               {safe_course_title:^48}     ┃
 ┃                                                                    ┃
 ┃   Certificate ID:  {certificate_id:<47}┃
 ┃   Enrollment ID:   {enrollment_id:<47}┃

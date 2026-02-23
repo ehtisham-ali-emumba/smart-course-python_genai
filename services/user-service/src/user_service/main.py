@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from core_service.providers.kafka.producer import EventProducer
+from shared.kafka.producer import EventProducer
 from user_service.api.router import router
 from user_service.config import settings
 from user_service.core.database import engine

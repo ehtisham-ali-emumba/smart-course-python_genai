@@ -6,9 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install core service (Kafka consumer, event schemas)
-COPY services/core/ /core/
-RUN pip install --no-cache-dir /core
+# Install shared library (Kafka consumer, event schemas)
+COPY shared/pyproject.toml /tmp/shared/pyproject.toml
+COPY shared/src/shared /tmp/shared/src/shared
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir /tmp/shared
 
 # Copy only pyproject.toml first for better caching
 COPY services/notification-service/pyproject.toml .
@@ -22,6 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pydantic-settings>=2.1.0 \
     httpx>=0.26.0 \
     structlog>=24.1.0 \
+    aiokafka>=0.10.0 \
     celery[redis]>=5.3.0
 
 COPY services/notification-service/src/ ./src/

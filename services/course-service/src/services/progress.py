@@ -13,7 +13,7 @@ from repositories.progress import ProgressRepository
 from schemas.progress import CourseProgressSummary, ModuleProgressDetail, ProgressCreate
 
 if TYPE_CHECKING:
-    from core_service.providers.kafka.producer import EventProducer
+    from shared.kafka.producer import EventProducer
 
 
 class ProgressService:
@@ -63,8 +63,8 @@ class ProgressService:
         )
 
         if self._producer:
-            from core_service.events.progress import ProgressUpdatedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.progress import ProgressUpdatedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.PROGRESS,
@@ -99,9 +99,7 @@ class ProgressService:
         course_id: int,
     ) -> CourseProgressSummary:
         """Get progress by course_id (convenience — looks up enrollment internally)."""
-        enrollment = await self.enrollment_repo.get_by_student_and_course(
-            user_id, course_id
-        )
+        enrollment = await self.enrollment_repo.get_by_student_and_course(user_id, course_id)
         if not enrollment:
             raise ValueError("User is not enrolled in this course")
         if enrollment.status not in ("active", "completed"):
@@ -123,9 +121,7 @@ class ProgressService:
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active (dropped or suspended)")
 
-        return await self._build_progress_summary(
-            user_id, enrollment.id, enrollment.course_id
-        )
+        return await self._build_progress_summary(user_id, enrollment.id, enrollment.course_id)
 
     # ── INTERNAL HELPERS ──────────────────────────────────────────
 
@@ -149,13 +145,9 @@ class ProgressService:
         content = await self.content_repo.get_by_course_id(course_id)
         modules = content.get("modules", []) if content else []
 
-        progress_records = await self.progress_repo.get_enrollment_progress(
-            enrollment_id
-        )
+        progress_records = await self.progress_repo.get_enrollment_progress(enrollment_id)
         # Build lookup: (item_type, item_id) → Progress record
-        progress_map = {
-            (p.item_type, p.item_id): p for p in progress_records
-        }
+        progress_map = {(p.item_type, p.item_id): p for p in progress_records}
 
         total_lessons_all = 0
         completed_lessons_all = 0
@@ -181,13 +173,15 @@ class ProgressService:
                     module_completed += 1
 
                 module_percentages.append(pct)
-                lesson_details.append({
-                    "item_type": lesson_info["type"],
-                    "item_id": lesson_info["id"],
-                    "title": lesson_info["title"],
-                    "progress_percentage": pct,
-                    "is_completed": is_done,
-                })
+                lesson_details.append(
+                    {
+                        "item_type": lesson_info["type"],
+                        "item_id": lesson_info["id"],
+                        "title": lesson_info["title"],
+                        "progress_percentage": pct,
+                        "is_completed": is_done,
+                    }
+                )
 
             module_pct = Decimal("0.00")
             if module_percentages:
@@ -227,10 +221,7 @@ class ProgressService:
             progress_percentage=course_pct,
             module_progress=module_progress_list,
             has_certificate=has_certificate,
-            is_complete=(
-                total_lessons_all > 0
-                and completed_lessons_all == total_lessons_all
-            ),
+            is_complete=(total_lessons_all > 0 and completed_lessons_all == total_lessons_all),
         )
 
     @staticmethod
@@ -243,29 +234,35 @@ class ProgressService:
         for lesson in module.get("lessons", []):
             if not lesson.get("is_active", True):
                 continue
-            items.append({
-                "type": "lesson",
-                "id": str(lesson.get("lesson_id")),
-                "title": lesson.get("title", ""),
-            })
+            items.append(
+                {
+                    "type": "lesson",
+                    "id": str(lesson.get("lesson_id")),
+                    "title": lesson.get("title", ""),
+                }
+            )
 
         for quiz in module.get("quizzes", []):
             if not quiz.get("is_active", True):
                 continue
-            items.append({
-                "type": "quiz",
-                "id": str(quiz.get("quiz_id")),
-                "title": quiz.get("title", ""),
-            })
+            items.append(
+                {
+                    "type": "quiz",
+                    "id": str(quiz.get("quiz_id")),
+                    "title": quiz.get("title", ""),
+                }
+            )
 
         for summary in module.get("summaries", []):
             if not summary.get("is_active", True):
                 continue
-            items.append({
-                "type": "summary",
-                "id": str(summary.get("summary_id")),
-                "title": summary.get("title", ""),
-            })
+            items.append(
+                {
+                    "type": "summary",
+                    "id": str(summary.get("summary_id")),
+                    "title": summary.get("title", ""),
+                }
+            )
 
         return items
 
@@ -296,27 +293,20 @@ class ProgressService:
         if not all_items:
             return
 
-        progress_records = await self.progress_repo.get_enrollment_progress(
-            enrollment_id
-        )
+        progress_records = await self.progress_repo.get_enrollment_progress(enrollment_id)
         completed_set = {
-            (p.item_type, p.item_id)
-            for p in progress_records
-            if p.completed_at is not None
+            (p.item_type, p.item_id) for p in progress_records if p.completed_at is not None
         }
 
-        all_done = all(
-            (item["type"], item["id"]) in completed_set
-            for item in all_items
-        )
+        all_done = all((item["type"], item["id"]) in completed_set for item in all_items)
 
         if not all_done:
             return
 
         # All items at 100% — mark enrollment completed
         if self._producer:
-            from core_service.events.progress import CourseCompletedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.progress import CourseCompletedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.PROGRESS,
@@ -338,8 +328,8 @@ class ProgressService:
         )
 
         if self._producer:
-            from core_service.events.enrollment import EnrollmentCompletedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.enrollment import EnrollmentCompletedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.ENROLLMENT,
@@ -370,8 +360,8 @@ class ProgressService:
         cert = await self.cert_repo.create(cert_data)
 
         if self._producer:
-            from core_service.events.certificate import CertificateIssuedPayload
-            from core_service.providers.kafka.topics import Topics
+            from shared.schemas.events.certificate import CertificateIssuedPayload
+            from shared.kafka.topics import Topics
 
             await self._producer.publish(
                 Topics.COURSE,

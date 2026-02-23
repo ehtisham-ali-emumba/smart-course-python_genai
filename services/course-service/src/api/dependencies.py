@@ -1,6 +1,6 @@
 from fastapi import HTTPException, Request, status
 
-from core_service.providers.kafka.producer import EventProducer
+from shared.kafka.producer import EventProducer
 
 
 def get_event_producer(request: Request) -> EventProducer:

@@ -242,6 +242,37 @@ services:
     networks:
       - smartcourse-network
 
+  core-service:
+    build:
+      context: .
+      dockerfile: services/core/Dockerfile
+    container_name: smartcourse-core-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smartcourse}:${RABBITMQ_PASSWORD:-smartcourse_secret}@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-smartcourse_secret}@redis:6379/2
+      - LOG_LEVEL=INFO
+      - TEMPORAL_HOST=${TEMPORAL_HOST:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-smartcourse}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-smartcourse-core}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartcourse-network
+
   celery-worker:
     build:
       context: .
@@ -300,6 +331,7 @@ services:
       - user-service
       - course-service
       - notification-service
+      - core-service
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
       interval: 15s

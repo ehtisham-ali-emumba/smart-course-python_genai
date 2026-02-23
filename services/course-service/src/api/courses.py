@@ -5,15 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_event_producer, require_instructor
 from core.database import get_db
-from core_service.events.course import (
+from shared.schemas.events.course import (
     CourseArchivedPayload,
     CourseCreatedPayload,
     CourseDeletedPayload,
     CoursePublishedPayload,
     CourseUpdatedPayload,
 )
-from core_service.providers.kafka.producer import EventProducer
-from core_service.providers.kafka.topics import Topics
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
 from schemas.course import (
     CourseCreate,
     CourseListResponse,
@@ -82,9 +82,7 @@ async def list_my_courses(
 ):
     """List courses created by the current instructor."""
     service = CourseService(db)
-    items, total = await service.list_instructor_courses(
-        instructor_id, skip=skip, limit=limit
-    )
+    items, total = await service.list_instructor_courses(instructor_id, skip=skip, limit=limit)
     return CourseListResponse(
         items=[CourseResponse(**c) for c in items],
         total=total,

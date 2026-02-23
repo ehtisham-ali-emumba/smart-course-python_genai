@@ -1,10 +1,14 @@
-class Topics:
-    """Kafka topic name constants — single source of truth across all services."""
+"""Kafka topic constants for SmartCourse."""
+
+from enum import Enum
+
+
+class Topics(str, Enum):
+    """Kafka topic names."""
 
     USER = "user.events"
     COURSE = "course.events"
     ENROLLMENT = "enrollment.events"
     PROGRESS = "progress.events"
     NOTIFICATION = "notification.events"
-
-    ALL = [USER, COURSE, ENROLLMENT, PROGRESS, NOTIFICATION]
+    CERTIFICATE = "certificate.events"

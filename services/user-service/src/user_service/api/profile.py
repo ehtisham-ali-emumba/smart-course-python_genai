@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core_service.events.user import UserProfileUpdatedPayload
-from core_service.providers.kafka.producer import EventProducer
-from core_service.providers.kafka.topics import Topics
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
+from shared.schemas.events.user import UserProfileUpdatedPayload
 from user_service.core.database import get_db
 from user_service.schemas.user import UserResponse, UserUpdate
 from user_service.services.user import UserService
