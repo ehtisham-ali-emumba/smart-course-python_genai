@@ -1,9 +1,9 @@
 # SmartCourse - System Design Document
 
-**Version:** 1.1  
-**Date:** February 11, 2026  
+**Version:** 2.0  
+**Date:** February 26, 2026  
 **Author:** SmartCourse Architecture Team  
-**Scope:** Complete System Architecture (Excluding AI/LLM/Vector DB Components)
+**Scope:** Complete System Architecture (Including AI/LLM/Vector DB Components)
 
 ---
 
@@ -24,124 +24,132 @@
 ## 1. High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     SMARTCOURSE - SYSTEM ARCHITECTURE                                            │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                        ╔══════════════════════════════════════════╗
+                        ║     SMARTCOURSE — SYSTEM ARCHITECTURE    ║
+                        ╚══════════════════════════════════════════╝
 
-                                         ┌─────────────────┐
-                                         │   CLIENTS       │
-                                         │ Web | Mobile    │
-                                         └────────┬────────┘
-                                                  │
-                                                  │ HTTPS
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                           GATEWAY LAYER                                                          │
-│  ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                                      API GATEWAY (FastAPI)                                                 │  │
-│  │                                         Port: 8000                                                         │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────────┐ │  │
-│  │  │ Auth         │  │ Rate         │  │ Request      │  │ Response     │  │ OpenTelemetry                │ │  │
-│  │  │ Middleware   │  │ Limiter      │  │ Validation   │  │ Aggregation  │  │ Tracing                      │ │  │
-│  │  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────────────────────┘ │  │
-│  └───────────────────────────────────────────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                                  │
-                    ┌─────────────────────────────┼─────────────────────────────┐
-                    │                             │                             │
-                    ▼                             ▼                             ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                          SERVICES LAYER                                                          │
-│                                                                                                                  │
-│  ┌──────────────────────────┐  ┌────────────────────────────────────────────────────────┐                        │
-│  │      USER SERVICE        │  │                  COURSE SERVICE (MERGED)               │                        │
-│  │       Port: 8001         │  │                     Port: 8002                         │                        │
-│  │                          │  │                                                        │                        │
-│  │  • Register              │  │  • CRUD Courses        • Enrollments                   │                        │
-│  │  • Login                 │  │  • Modules             • Progress Tracking             │                        │
-│  │  • JWT Token Generation  │  │  • Materials           • Certificates                  │                        │
-│  │  • User CRUD             │  │  • Publishing          • Quiz Scoring                  │                        │
-│  │  • Instructor Profiles   │  │                                                        │                        │
-│  │  • Password Management   │  │  (Combines: Course + Enrollment + Progress +           │                        │
-│  │                          │  │   Certificate functionality)                           │                        │
-│  └────────────┬─────────────┘  └──────────────────────────┬─────────────────────────────┘                        │
-│               │                                           │                                                      │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐                                                      │
-│  │   NOTIFICATION SERVICE   │  │    ANALYTICS SERVICE     │                                                      │
-│  │       Port: 8005         │  │       Port: 8008         │                                                      │
-│  │                          │  │                          │                                                      │
-│  │  • Email Notifications   │  │  • Metrics Collection    │                                                      │
-│  │  • Push Notifications    │  │  • Reports               │                                                      │
-│  │  • In-App Notifications  │  │  • Dashboards            │                                                      │
-│  └────────────┬─────────────┘  └────────────┬─────────────┘                                                      │
-└───────────────┼─────────────────────────────┼────────────────────────────────────────────────────────────────────┘
-            │                    │                    │
-            └────────────────────┼────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       EVENT & WORKFLOW LAYER                                                     │
-│                                                                                                                  │
-│  ┌─────────────────────────────────────────────────┐  ┌────────────────────────────────────────────────────────┐│
-│  │              KAFKA EVENT BUS                     │  │              TEMPORAL ORCHESTRATOR                    ││
-│  │                                                  │  │                                                        ││
-│  │  Topics:                                         │  │  Workflows:                                            ││
-│  │  ├─ user.events                                  │  │  ├─ CoursePublishingWorkflow                          ││
-│  │  ├─ course.events                                │  │  ├─ EnrollmentWorkflow                                ││
-│  │  ├─ enrollment.events                            │  │  ├─ CertificateGenerationWorkflow                     ││
-│  │  ├─ progress.events                              │  │  └─ CourseArchiveWorkflow                             ││
-│  │  ├─ notification.events                          │  │                                                        ││
-│  │  └─ analytics.events                             │  │  Activities:                                           ││
-│  │                                                  │  │  ├─ validate_course                                   ││
-│  │  Consumer Groups:                                │  │  ├─ process_content                                   ││
-│  │  ├─ analytics-consumer                           │  │  ├─ initialize_progress                               ││
-│  │  ├─ notification-consumer                        │  │  ├─ update_analytics                                  ││
-│  │  └─ content-consumer                             │  │  ├─ send_notification                                 ││
-│  └─────────────────────────────────────────────────┘  │  └─ generate_certificate                               ││
-│                                                        └────────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────┐                                                             │
-│  │              CELERY + RABBITMQ                   │                                                            │
-│  │                                                  │                                                            │
-│  │  Queues:                                         │                                                            │
-│  │  ├─ email_queue                                  │                                                            │
-│  │  ├─ sms_queue                                    │                                                            │
-│  │  ├─ report_queue                                 │                                                            │
-│  │  └─ certificate_queue                            │                                                            │
-│  │                                                  │                                                            │
-│  │  Workers: 3-5 concurrent workers                 │                                                            │
-│  └─────────────────────────────────────────────────┘                                                             │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                                  │
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                           DATA LAYER                                                             │
-│                                                                                                                  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                             │
-│  │   POSTGRESQL    │  │    MONGODB      │  │     REDIS       │  │  OBJECT STORE   │                             │
-│  │                 │  │                 │  │                 │  │    (S3/MinIO)   │                             │
-│  │ • Users         │  │ • CourseContent │  │ • Sessions      │  │                 │                             │
-│  │ • Courses       │  │ • Materials     │  │ • Cache         │  │ • Videos        │                             │
-│  │ • Enrollments   │  │ • Assignments   │  │ • Rate Limits   │  │ • PDFs          │                             │
-│  │ • Progress      │  │ • Flexible Data │  │ • Progress      │  │ • Images        │                             │
-│  │ • Certificates  │  │                 │  │   Snapshots     │  │ • Certificates  │                             │
-│  │ • Analytics     │  │                 │  │ • Queues        │  │                 │                             │
-│  │ • Events        │  │                 │  │                 │  │                 │                             │
-│  │ • Workflows     │  │                 │  │                 │  │                 │                             │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘                             │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                                  │
-                                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       OBSERVABILITY LAYER                                                        │
-│                                                                                                                  │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                             │
-│  │   PROMETHEUS    │  │    GRAFANA      │  │     JAEGER      │  │ OPENTELEMETRY   │                             │
-│  │                 │  │                 │  │                 │  │                 │                             │
-│  │ • Metrics       │  │ • Dashboards    │  │ • Traces        │  │ • Instrumentation│                            │
-│  │ • Alerts        │  │ • Visualization │  │ • Spans         │  │ • Export        │                             │
-│  │ • Scraping      │  │ • Alerting      │  │ • Dependencies  │  │ • Context       │                             │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘                             │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+                               ┌───────────────────┐
+                               │     CLIENTS       │
+                               │   Web  ·  Mobile  │
+                               └─────────┬─────────┘
+                                         │ HTTPS
+                                         ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  GATEWAY LAYER                                                               │
+│                                                                              │
+│   ┌────────────────────────────────────────────────────────────────────┐     │
+│   │                    API GATEWAY  (FastAPI :8000)                    │     │
+│   │                                                                    │     │
+│   │   Auth       Rate        Request      Response     OpenTelemetry  │     │
+│   │   Middleware  Limiter     Validation   Aggregation  Tracing       │     │
+│   └────────────────────────────────────────────────────────────────────┘     │
+│                                                                              │
+└──────────────────────────┬───────────────────────────────────────────────────┘
+                           │  REST / WebSocket
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  SERVICES LAYER                                                              │
+│                                                                              │
+│   ┌─────────────────────┐    ┌───────────────────────────────────────┐       │
+│   │   USER SERVICE      │    │        COURSE SERVICE (Merged)        │       │
+│   │      :8001          │    │               :8002                    │       │
+│   │                     │    │                                        │       │
+│   │  · Registration     │    │  · CRUD Courses    · Enrollments      │       │
+│   │  · Login / Auth     │    │  · Modules         · Progress         │       │
+│   │  · JWT Generation   │    │  · Materials       · Certificates     │       │
+│   │  · User CRUD        │    │  · Publishing      · Quiz Scoring     │       │
+│   │  · Instructor Mgmt  │    │                                        │       │
+│   │  · Password Mgmt    │    │  (Course + Enrollment + Progress +    │       │
+│   │                     │    │   Certificate — single deployable)     │       │
+│   └─────────────────────┘    └───────────────────────────────────────┘       │
+│                                                                              │
+│   ┌─────────────────────┐  ┌──────────────────┐  ┌──────────────────────┐   │
+│   │ NOTIFICATION SVC    │  │  ANALYTICS SVC   │  │     AI SERVICE       │   │
+│   │      :8005          │  │      :8008       │  │        :8009         │   │
+│   │                     │  │                  │  │                      │   │
+│   │  · Email            │  │  · Metrics       │  │  · Quiz Generation   │   │
+│   │  · Push             │  │  · Reports       │  │  · Summary Gen       │   │
+│   │  · In-App           │  │  · Dashboards    │  │  · AI Tutor (RAG)    │   │
+│   │                     │  │                  │  │  · Content Indexing   │   │
+│   │                     │  │                  │  │  · LangGraph Agents   │   │
+│   └─────────────────────┘  └──────────────────┘  └──────────────────────┘   │
+│                                                                              │
+└──────────────────────────┬───────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  EVENT & WORKFLOW LAYER                                                      │
+│                                                                              │
+│   ┌──────────────────────────┐     ┌─────────────────────────────────────┐   │
+│   │   KAFKA  (Event Bus)     │     │   TEMPORAL  (Workflow Orchestrator) │   │
+│   │                          │     │                                     │   │
+│   │   Topics:                │     │   Workflows:                        │   │
+│   │    · user.events         │     │    · CoursePublishingWorkflow       │   │
+│   │    · course.events       │     │    · EnrollmentWorkflow            │   │
+│   │    · enrollment.events   │     │    · CertificateGenerationWorkflow │   │
+│   │    · progress.events     │     │    · CourseArchiveWorkflow         │   │
+│   │    · notification.events │     │    · RAGIndexingWorkflow           │   │
+│   │    · analytics.events    │     │                                     │   │
+│   │    · ai.events           │     │   Activities:                       │   │
+│   │                          │     │    · validate_course               │   │
+│   │   Consumer Groups:       │     │    · process_content               │   │
+│   │    · analytics-consumer  │     │    · initialize_progress           │   │
+│   │    · notification-consumer│    │    · update_analytics              │   │
+│   │    · content-consumer    │     │    · send_notification             │   │
+│   │    · ai-consumer         │     │    · generate_certificate          │   │
+│   │                          │     │    · index_course_embeddings       │   │
+│   └──────────────────────────┘     └─────────────────────────────────────┘   │
+│                                                                              │
+│   ┌──────────────────────────┐                                               │
+│   │   CELERY + RABBITMQ      │                                               │
+│   │   (Background Tasks)     │                                               │
+│   │                          │                                               │
+│   │   Queues:                │                                               │
+│   │    · email_queue         │                                               │
+│   │    · sms_queue           │                                               │
+│   │    · report_queue        │                                               │
+│   │    · certificate_queue   │                                               │
+│   │                          │                                               │
+│   │   Workers: 3–5 concurrent│                                               │
+│   └──────────────────────────┘                                               │
+│                                                                              │
+└──────────────────────────┬───────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  DATA LAYER                                                                  │
+│                                                                              │
+│   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────┐ ┌────────┐ │
+│   │  POSTGRESQL  │ │   MONGODB    │ │    REDIS     │ │ OBJECT │ │ QDRANT │ │
+│   │              │ │              │ │              │ │ STORE  │ │(Vector)│ │
+│   │ · Users      │ │ · Course     │ │ · Sessions   │ │(S3/    │ │        │ │
+│   │ · Courses    │ │   Content    │ │ · Cache      │ │ MinIO) │ │ · Emb- │ │
+│   │ · Enrollments│ │ · Materials  │ │ · Rate Limits│ │        │ │  eddings││
+│   │ · Progress   │ │ · AI Content │ │ · Progress   │ │ · Video│ │ · RAG  │ │
+│   │ · Certificates││   (Quiz /   │ │   Snapshots  │ │ · PDFs │ │   Retr-│ │
+│   │ · Analytics  │ │   Summary)  │ │ · Queues     │ │ · Imgs │ │   ieval│ │
+│   │ · Events     │ │              │ │              │ │ · Certs│ │ · Sem- │ │
+│   │ · Workflows  │ │              │ │              │ │        │ │  antic │ │
+│   │ · AI Convos  │ │              │ │              │ │        │ │  Search│ │
+│   └──────────────┘ └──────────────┘ └──────────────┘ └────────┘ └────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  OBSERVABILITY  (Cross-cutting — monitors all layers)                        │
+│                                                                              │
+│   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐   │
+│   │  PROMETHEUS  │  │   GRAFANA    │  │   JAEGER     │  │ OPENTELEMETRY │   │
+│   │              │  │              │  │              │  │               │   │
+│   │  · Metrics   │  │  · Dashboards│  │  · Traces    │  │ · Instrument- │   │
+│   │  · Alerts    │  │  · Visualize │  │  · Spans     │  │   ation       │   │
+│   │  · Scraping  │  │  · Alerting  │  │  · Deps      │  │ · Export      │   │
+│   └──────────────┘  └──────────────┘  └──────────────┘  └───────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -154,9 +162,12 @@
 | -------------- | -------------------- | -------- | ---------------------------------------------------------------- | ------------------------------------------ |
 | API Gateway    | User Service         | REST     | `/auth/*`, `/users/*`                                            | Authentication, User CRUD                  |
 | API Gateway    | Course Service       | REST     | `/courses/*`, `/enrollments/*`, `/progress/*`, `/certificates/*` | Course, Enrollment, Progress, Certificates |
+| API Gateway    | AI Service           | REST/WS  | `/ai/*`                                                          | Quiz generation, AI Tutor, RAG indexing    |
 | API Gateway    | Analytics Service    | REST     | `/analytics/*`                                                   | Dashboard data                             |
 | API Gateway    | Notification Service | REST     | `/notifications/*`                                               | Notification management                    |
 | Course Service | User Service         | REST     | `/users/{id}`                                                    | Validate student exists                    |
+| AI Service     | Course Service       | REST     | `/courses/{id}/content`                                          | Fetch course content for indexing          |
+| AI Service     | Course Service       | REST     | `/progress/{user_id}/{course_id}`                                | Get student progress for AI Tutor          |
 
 **Note:** API Gateway is the ONLY interface for frontend. It handles:
 
@@ -167,20 +178,25 @@
 
 ### 2.2 Asynchronous Communication (Events)
 
-| Producer       | Event                       | Topic         | Consumers               |
-| -------------- | --------------------------- | ------------- | ----------------------- |
-| User Service   | `user.registered`           | user.events   | Analytics, Notification |
-| User Service   | `user.verified`             | user.events   | Analytics               |
-| Course Service | `course.created`            | course.events | Analytics               |
-| Course Service | `course.published`          | course.events | Analytics, Notification |
-| Course Service | `course.updated`            | course.events | Analytics               |
-| Course Service | `course.archived`           | course.events | Notification, Analytics |
-| Course Service | `enrollment.created`        | course.events | Analytics, Notification |
-| Course Service | `enrollment.completed`      | course.events | Analytics, Notification |
-| Course Service | `enrollment.dropped`        | course.events | Analytics               |
-| Course Service | `progress.updated`          | course.events | Analytics               |
-| Course Service | `progress.module_completed` | course.events | Analytics, Notification |
-| Course Service | `certificate.issued`        | course.events | Notification            |
+| Producer       | Event                       | Topic         | Consumers                           |
+| -------------- | --------------------------- | ------------- | ----------------------------------- |
+| User Service   | `user.registered`           | user.events   | Analytics, Notification             |
+| User Service   | `user.verified`             | user.events   | Analytics                           |
+| Course Service | `course.created`            | course.events | Analytics                           |
+| Course Service | `course.published`          | course.events | Analytics, Notification, AI Service |
+| Course Service | `course.updated`            | course.events | Analytics                           |
+| Course Service | `course.archived`           | course.events | Notification, Analytics, AI Service |
+| Course Service | `content.updated`           | course.events | AI Service                          |
+| Course Service | `enrollment.created`        | course.events | Analytics, Notification             |
+| Course Service | `enrollment.completed`      | course.events | Analytics, Notification             |
+| Course Service | `enrollment.dropped`        | course.events | Analytics                           |
+| Course Service | `progress.updated`          | course.events | Analytics                           |
+| Course Service | `progress.module_completed` | course.events | Analytics, Notification             |
+| Course Service | `certificate.issued`        | course.events | Notification                        |
+| AI Service     | `quiz.generated`            | ai.events     | Notification                        |
+| AI Service     | `summary.generated`         | ai.events     | Notification                        |
+| AI Service     | `rag.indexed`               | ai.events     | Notification, Analytics             |
+| AI Service     | `rag.failed`                | ai.events     | Notification                        |
 
 **Note:** Course Service now publishes all course-related events (including enrollment, progress, certificate) since these functionalities are merged.
 
@@ -698,6 +714,54 @@
 
 ---
 
+### 5.8 AI Service
+
+| Property             | Value                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| **Port**             | 8009                                                                                |
+| **Database**         | PostgreSQL (ai_conversations, ai_messages, ai_generation_history, rag_index_status) |
+| **Vector Database**  | Qdrant (course_embeddings)                                                          |
+| **Document Store**   | MongoDB (ai_generated_content)                                                      |
+| **LLM Provider**     | OpenAI (GPT-4o-mini, text-embedding-3-small)                                        |
+| **Agent Framework**  | LangGraph                                                                           |
+| **Events Consumed**  | course.published, course.archived, content.updated                                  |
+| **Events Published** | quiz.generated, summary.generated, rag.indexed, rag.failed                          |
+| **Dockerfile**       | services/ai-service/Dockerfile                                                      |
+| **Dependencies**     | pyproject.toml (NO requirements.txt)                                                |
+
+**Responsibilities:**
+
+- Quiz & Summary generation for course modules (LangGraph agents)
+- AI Tutor (RAG-based Q&A for enrolled students)
+- Course content indexing for vector search
+- Conversation history management
+- Content parsing (text, PDF, video transcripts)
+
+**Endpoints:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /ai/generate/quiz/{course_id}/{module_id} | Generate quiz for module (Teacher) |
+| POST | /ai/generate/summary/{course_id}/{module_id} | Generate summary for module (Teacher) |
+| GET | /ai/content/{course_id}/{module_id} | Get AI-generated content |
+| PUT | /ai/content/{course_id}/{module_id}/quiz | Update/edit quiz |
+| PUT | /ai/content/{course_id}/{module_id}/summary | Update/edit summary |
+| POST | /ai/tutor/chat | Send message to AI Tutor |
+| WS | /ai/tutor/chat/stream | WebSocket for streaming chat |
+| GET | /ai/tutor/sessions/{user_id} | List chat sessions |
+| GET | /ai/tutor/sessions/{session_id}/messages | Get session messages |
+| DELETE | /ai/tutor/sessions/{session_id} | Delete chat session |
+| POST | /ai/index/course/{course_id} | Manual RAG indexing |
+| GET | /ai/index/status/{course_id} | Get indexing status |
+
+**LangGraph Agents:**
+| Agent | Purpose | Tools |
+|-------|---------|-------|
+| Quiz Generator | Generate quiz questions from content | content_fetcher, pdf_parser, quiz_validator |
+| Summary Generator | Generate module summaries | content_fetcher, pdf_parser, transcript_parser |
+| AI Tutor | Answer student questions (RAG) | search_course_content, get_progress, get_quiz |
+
+---
+
 ## 6. Infrastructure Components
 
 ### 6.1 Message Queue Architecture
@@ -1016,7 +1080,8 @@ RedisInstrumentor().instrument()
 | email_queue       | email_dlq      | Manual review, re-queue    |
 | enrollment.events | enrollment_dlq | Alert, manual intervention |
 | progress.events   | progress_dlq   | Batch reprocessing         |
+| ai.events         | ai_dlq         | Alert, manual reindex      |
 
 ---
 
-_Document Version: 1.1 | Last Updated: February 11, 2026_
+_Document Version: 2.0 | Last Updated: February 26, 2026_

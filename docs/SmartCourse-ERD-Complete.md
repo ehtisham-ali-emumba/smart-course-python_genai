@@ -1,21 +1,26 @@
 # SmartCourse - Entity Relationship Diagram (ERD)
 
-**Version:** 1.2  
-**Date:** February 11, 2026  
+**Version:** 2.0  
+**Date:** February 26, 2026  
 **Author:** SmartCourse Architecture Team  
-**Scope:** Core Platform Entities (Excluding AI/LLM/Vector DB Components)
+**Scope:** Complete Platform Entities (Including AI/LLM/Vector DB Components)
 
 ---
 
 ## Key Schema Decisions
 
-| Decision                                    | Rationale                                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Separate Progress Table**                 | 1:N relationship - tracks per-lesson progress with percentage granularity      |
-| **enrollment_id in Progress (not course_id)** | Correctly scopes progress per enrollment; allows user re-enrollment tracking   |
-| **progress_percentage + updated_at**        | Enables partial progress tracking (0-100%) and resume functionality            |
-| **Auto-issue Certificates**                 | Triggered when course hits 100% completion; reduces manual overhead            |
-| **Certificates → enrollment_id only**       | Student/course derived from enrollment, reduces redundancy                     |
+| Decision                                      | Rationale                                                                    |
+| --------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Separate Progress Table**                   | 1:N relationship - tracks per-lesson progress with percentage granularity    |
+| **enrollment_id in Progress (not course_id)** | Correctly scopes progress per enrollment; allows user re-enrollment tracking |
+| **progress_percentage + updated_at**          | Enables partial progress tracking (0-100%) and resume functionality          |
+| **Auto-issue Certificates**                   | Triggered when course hits 100% completion; reduces manual overhead          |
+| **Certificates → enrollment_id only**         | Student/course derived from enrollment, reduces redundancy                   |
+| **AI-Generated Content in MongoDB**           | Flexible nested schema (quiz questions, summary), easy teacher edits, version tracking |
+| **Conversation history in PostgreSQL**        | Structured, easy pagination by user/session, FK to ai_conversations          |
+| **RAG_INDEX_STATUS separate from Qdrant**     | PG tracks indexing state per course; Qdrant only stores vectors — no overlap |
+| **AI_GENERATION_HISTORY as audit log only**   | PG stores who/when/how; MongoDB stores the actual content — two sides of one event |
+| **Cross-service refs via logical FK**         | AI service references user_id and course_id by value (no DB-level FK across services) |
 
 ---
 
@@ -32,13 +37,13 @@
                                           ├──────────────────────┤
                                           │ PK id                │
                                           │    email (UNIQUE)    │
-                                          │    username (UNIQUE) │
-                                          │    hashed_password   │
                                           │    first_name        │
                                           │    last_name         │
+                                          │    password_hash     │
                                           │    role              │
                                           │    is_active         │
                                           │    is_verified       │
+                                          │    phone_number      │
                                           │    created_at        │
                                           │    updated_at        │
                                           └──────────┬───────────┘
@@ -48,29 +53,38 @@
                          │ 1:1 (becomes instructor)                              │ 1:N (as student)
                          ▼                                                       ▼
               ┌──────────────────────┐                                ┌─────────────────────────────────┐
-              │  INSTRUCTOR_PROFILE  │                                │  ENROLLMENTS (includes Progress)│
+              │  INSTRUCTOR_PROFILE  │                                │         ENROLLMENTS             │
               ├──────────────────────┤                                ├─────────────────────────────────┤
               │ PK id                │                                │ PK id                           │
               │ FK user_id (UNIQUE)  │                                │ FK student_id                   │◄── Users
               │    specialization    │                                │ FK course_id                    │◄── Courses
               │    bio               │                                │    status                       │
               │    total_students    │                                │    enrolled_at                  │
-              │    rating            │                                │    completed_at                 │
-              │    verified_at       │                                │    completion_percentage        │
-              └──────────┬───────────┘                                │    last_accessed_at             │
-                         │                                            │── Progress Fields (merged) ──── │
-                         │ 1:N (creates courses)                      │    completed_modules[]          │
-                         ▼                                            │    completed_lessons[]          │
-              ┌──────────────────────┐                                │    total_modules                │
-              │       COURSES        │───────────────────────────────►│    total_lessons                │
-              ├──────────────────────┤              1:N               │    quiz_scores (JSONB)          │
-              │ PK id                │       (has many enrollments)   │    time_spent_minutes           │
-              │    title             │                                │    current_module_id            │
-              │    slug (UNIQUE)     │                                │    current_lesson_id            │
-              │    description       │                                └────────────────┬────────────────┘
-              │ FK instructor_id     │                                                 │
-              │    category          │                                                 │ 1:1
-              │    level             │                                                 │ (earns certificate)
+              │    rating            │                                │    started_at                   │
+              │    verified_at       │                                │    completed_at                 │
+              └──────────┬───────────┘                                │    dropped_at                   │
+                         │                                            │    last_accessed_at             │
+                         │ 1:N (creates courses)                      │    payment_status               │
+                         ▼                                            │    payment_amount               │
+              ┌──────────────────────┐                                │    enrollment_source            │
+              │       COURSES        │───────────────────────────────►│    time_spent_minutes           │
+              ├──────────────────────┤              1:N               └──────────┬──────────┬───────────┘
+              │ PK id                │       (has many enrollments)              │          │
+              │    title             │                                           │          │ 1:N (progress)
+              │    slug (UNIQUE)     │                                           │          ▼
+              │    description       │                                           │  ┌───────────────────┐
+              │ FK instructor_id     │                                           │  │     PROGRESS      │
+              │    category          │                                           │  ├───────────────────┤
+              │    level             │                                           │  │ PK id             │
+                                                                                │  │    user_id        │
+                                                                                │  │ FK enrollment_id  │
+                                                                                │  │    item_type      │
+                                                                                │  │    item_id        │
+                                                                                │  │    progress_pct   │
+                                                                                │  │    completed_at   │
+                                                                                │  └───────────────────┘
+                                                                                │
+                                                                                │ 1:1 (earns certificate)
               │    status            │                                                 ▼
               │    published_at      │                              ┌──────────────────────────────────┐
               │    max_students      │                              │         CERTIFICATES             │
@@ -128,6 +142,84 @@
                             │ file_url             │
                             │ created_at           │
                             └──────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                          AI SERVICE ENTITIES                                                      │
+│                  Feature 1: AI Tutor (RAG)  │  Feature 2: Quiz & Summary Generation                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  External references (cross-service, logical FK — no DB-level constraint):
+  ┌─────────────┐          ┌──────────────────────┐
+  │    USERS    │          │       COURSES         │
+  │ (user-svc)  │          │  (course-service PG)  │
+  └──────┬──────┘          └───────────┬───────────┘
+         │ user_id                     │ course_id
+         │                             │
+─────────┼─────────────────────────────┼───────────────────────────────────────────────────
+         │                             │
+         │         ╔═══════════════════╩══════════════════════════════════════╗
+         │         ║          FEATURE 1: AI TUTOR (RAG)                      ║
+         │         ╚══════════════════════════════════════════════════════════╝
+         │                             │
+         │  ┌──────────────────────────┴──────────────────────────────┐
+         │  │                                                          │
+         ▼  ▼                                                          ▼
+┌──────────────────────────────┐  1:N  ┌───────────────────────────────────────┐
+│   AI_CONVERSATIONS (PG)      │──────►│          AI_MESSAGES (PG)             │
+├──────────────────────────────┤       ├───────────────────────────────────────┤
+│ PK id                        │       │ PK id                                 │
+│    session_id (UUID, UNIQUE)  │       │ FK conversation_id ──────────────────►│(CASCADE DEL)
+│ FK user_id  (→ users)        │       │    role  ('user' | 'assistant')       │
+│    course_id (→ courses)     │       │    content (TEXT)                     │
+│    is_active                  │       │    retrieved_context (JSONB) ─────────┼──► Qdrant chunk IDs
+│    created_at                 │       │    tokens_used                        │
+│    updated_at                 │       │    model / latency_ms                 │
+└──────────────────────────────┘       │    created_at                         │
+                                       └───────────────────────────────────────┘
+
+┌──────────────────────────────┐  tracks  ┌──────────────────────────────────────┐
+│   RAG_INDEX_STATUS (PG)      │─────────►│      COURSE_EMBEDDINGS (Qdrant)      │
+├──────────────────────────────┤          ├──────────────────────────────────────┤
+│ PK id                        │          │ id (UUID)                            │
+│    course_id (UNIQUE)        │◄─────────│ payload.course_id  (same course)     │
+│    status                    │          │ payload.module_id                    │
+│    indexed_at                │          │ payload.lesson_id  (→ MongoDB lesson)│
+│    total_chunks              │          │ payload.chunk_index                  │
+│    total_lessons             │          │ payload.text  (chunk content)        │
+│    embedding_model           │          │ payload.metadata { titles }          │
+│    last_content_hash (MD5)   │          │ vector [1536 dims, Cosine]           │
+│    created_at / updated_at   │          └──────────────────────────────────────┘
+└──────────────────────────────┘
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+         │                             │
+         │         ╔═══════════════════╩══════════════════════════════════════╗
+         │         ║       FEATURE 2: QUIZ & SUMMARY GENERATION               ║
+         │         ╚══════════════════════════════════════════════════════════╝
+         │                             │
+         ▼                             ▼
+┌──────────────────────────────┐              ┌──────────────────────────────────┐
+│  AI_GENERATION_HISTORY (PG)  │──soft link──►│    AI_GENERATED_CONTENT (Mongo)  │
+│    (the audit log)           │ (course_id + │    (the actual output)           │
+├──────────────────────────────┤  module_id)  ├──────────────────────────────────┤
+│ PK id                        │              │ _id (ObjectId)                   │
+│    course_id  (→ courses)    │◄─────────────│ course_id   (same course)        │
+│    module_id                 │◄─────────────│ module_id   (same module)        │
+│    generation_type           │              │ summary: {                       │
+│      ('quiz' | 'summary')    │              │   content, version, model,       │
+│    version                   │              │   is_edited, original_content }  │
+│ FK triggered_by (→ users)    │              │ quiz: {                          │
+│    input_lesson_count        │              │   questions[], version,          │
+│    tokens_used               │              │   settings, is_edited }          │
+│    status                    │              │ source_lesson_ids[]              │
+│    error_message             │              │ created_at / updated_at          │
+│    created_at                │              └──────────────────────────────────┘
+└──────────────────────────────┘
+
+  NOTE: AI_GENERATION_HISTORY and AI_GENERATED_CONTENT share (course_id, module_id) as a
+  soft link. PG stores WHO generated it + metrics; MongoDB stores WHAT was generated.
+  No hard FK across stores — referential integrity enforced at the application layer.
 ```
 
 ---
@@ -140,22 +232,19 @@
 
 Central entity storing all platform users with role-based access.
 
-| Column            | Type                                 | Constraints      | Description                  |
-| ----------------- | ------------------------------------ | ---------------- | ---------------------------- |
-| id                | SERIAL                               | PRIMARY KEY      | Auto-incrementing identifier |
-| email             | VARCHAR(255)                         | UNIQUE, NOT NULL | User email address           |
-| username          | VARCHAR(100)                         | UNIQUE, NOT NULL | Unique username              |
-| hashed_password   | VARCHAR(255)                         | NOT NULL         | Bcrypt hashed password       |
-| first_name        | VARCHAR(100)                         |                  | User's first name            |
-| last_name         | VARCHAR(100)                         |                  | User's last name             |
-| role              | ENUM('student','instructor','admin') | NOT NULL         | User role                    |
-| is_active         | BOOLEAN                              | DEFAULT TRUE     | Account status               |
-| is_verified       | BOOLEAN                              | DEFAULT FALSE    | Email verification           |
-| profile_image_url | VARCHAR(500)                         |                  | Avatar URL                   |
-| created_at        | TIMESTAMP                            | DEFAULT NOW()    | Creation timestamp           |
-| updated_at        | TIMESTAMP                            | ON UPDATE NOW()  | Last update                  |
-| last_login_at     | TIMESTAMP                            |                  | Last login time              |
-| is_deleted        | BOOLEAN                              | DEFAULT FALSE    | Soft delete flag             |
+| Column        | Type                                 | Constraints      | Description                  |
+| ------------- | ------------------------------------ | ---------------- | ---------------------------- |
+| id            | SERIAL                               | PRIMARY KEY      | Auto-incrementing identifier |
+| email         | VARCHAR(255)                         | UNIQUE, NOT NULL | User email address           |
+| first_name    | VARCHAR(100)                         | NOT NULL         | User's first name            |
+| last_name     | VARCHAR(100)                         | NOT NULL         | User's last name             |
+| password_hash | VARCHAR(255)                         | NOT NULL         | Bcrypt hashed password       |
+| role          | VARCHAR(50)                          | NOT NULL         | student, instructor, admin   |
+| is_active     | BOOLEAN                              | DEFAULT TRUE     | Account status               |
+| is_verified   | BOOLEAN                              | DEFAULT FALSE    | Email verification           |
+| phone_number  | VARCHAR(20)                          |                  | Phone number                 |
+| created_at    | TIMESTAMP                            | DEFAULT NOW()    | Creation timestamp           |
+| updated_at    | TIMESTAMP                            | ON UPDATE NOW()  | Last update                  |
 
 ---
 
@@ -189,40 +278,31 @@ Main entity for course metadata and status tracking.
 
 ---
 
-#### **ENROLLMENTS (Merged with Progress)**
+#### **ENROLLMENTS**
 
-Tracks student enrollments in courses AND their progress (merged 1:1 relationship).
+Tracks student enrollments in courses.
 
-| Column                    | Type                                             | Constraints                | Description                              |
-| ------------------------- | ------------------------------------------------ | -------------------------- | ---------------------------------------- |
-| id                        | SERIAL                                           | PRIMARY KEY                | Auto-incrementing identifier             |
-| student_id                | INTEGER                                          | FK → users(id), NOT NULL   | Enrolled student                         |
-| course_id                 | INTEGER                                          | FK → courses(id), NOT NULL | Target course                            |
-| status                    | ENUM('active','completed','dropped','suspended') | NOT NULL, INDEX            | Enrollment status                        |
-| enrolled_at               | TIMESTAMP                                        | DEFAULT NOW()              | Enrollment time                          |
-| started_at                | TIMESTAMP                                        |                            | First access                             |
-| completed_at              | TIMESTAMP                                        |                            | Completion time                          |
-| dropped_at                | TIMESTAMP                                        |                            | Drop time                                |
-| last_accessed_at          | TIMESTAMP                                        |                            | Last course access                       |
-| payment_status            | ENUM('pending','completed','refunded')           |                            | Payment state                            |
-| payment_amount            | DECIMAL(10,2)                                    |                            | Amount paid                              |
-| enrollment_source         | VARCHAR(100)                                     |                            | 'web','mobile','api'                     |
-| **completed_modules**     | INTEGER[]                                        | DEFAULT '{}'               | Completed module IDs (from Progress)     |
-| **completed_lessons**     | INTEGER[]                                        | DEFAULT '{}'               | Completed lesson IDs (from Progress)     |
-| **total_modules**         | INTEGER                                          | NOT NULL, DEFAULT 0        | Total modules count (from Progress)      |
-| **total_lessons**         | INTEGER                                          | NOT NULL, DEFAULT 0        | Total lessons count (from Progress)      |
-| **completion_percentage** | DECIMAL(5,2)                                     | DEFAULT 0.00               | Progress 0-100% (from Progress)          |
-| **completed_quizzes**     | INTEGER[]                                        | DEFAULT '{}'               | Completed quiz IDs (from Progress)       |
-| **quiz_scores**           | JSONB                                            |                            | Scores: {quiz_id: score} (from Progress) |
-| **time_spent_minutes**    | INTEGER                                          | DEFAULT 0                  | Total time spent (from Progress)         |
-| **current_module_id**     | INTEGER                                          |                            | Current module (from Progress)           |
-| **current_lesson_id**     | INTEGER                                          |                            | Current lesson (from Progress)           |
-| created_at                | TIMESTAMP                                        | DEFAULT NOW()              | Record creation                          |
-| updated_at                | TIMESTAMP                                        | ON UPDATE NOW()            | Last update                              |
+| Column            | Type          | Constraints                | Description                  |
+| ----------------- | ------------- | -------------------------- | ---------------------------- |
+| id                | SERIAL        | PRIMARY KEY                | Auto-incrementing identifier |
+| student_id        | INTEGER       | NOT NULL, INDEX            | Enrolled student             |
+| course_id         | INTEGER       | NOT NULL, INDEX            | Target course                |
+| status            | VARCHAR(50)   | NOT NULL, INDEX            | active, completed, dropped, suspended |
+| enrolled_at       | TIMESTAMP     | DEFAULT NOW()              | Enrollment time              |
+| started_at        | TIMESTAMP     |                            | First access                 |
+| completed_at      | TIMESTAMP     |                            | Completion time              |
+| dropped_at        | TIMESTAMP     |                            | Drop time                    |
+| last_accessed_at  | TIMESTAMP     |                            | Last course access           |
+| payment_status    | VARCHAR(50)   |                            | pending, completed, refunded |
+| payment_amount    | DECIMAL(10,2) |                            | Amount paid                  |
+| enrollment_source | VARCHAR(100)  |                            | web, mobile, api             |
+| time_spent_minutes| INTEGER       | DEFAULT 0                  | Total time spent             |
+| created_at        | TIMESTAMP     | DEFAULT NOW()              | Record creation              |
+| updated_at        | TIMESTAMP     | ON UPDATE NOW()            | Last update                  |
 
 **Unique Constraint:** `(student_id, course_id)`
 
-**Note:** Fields marked in bold were previously in a separate PROGRESS table. They are now merged into ENROLLMENTS since there was a 1:1 relationship between the two tables.
+**Note:** Progress tracking is handled by the separate PROGRESS table (1:N relationship per enrollment). Each lesson/quiz/summary gets its own progress row.
 
 ---
 
@@ -230,21 +310,22 @@ Tracks student enrollments in courses AND their progress (merged 1:1 relationshi
 
 Tracks per-lesson progress for each enrollment. One row per (user, enrollment, item).
 
-| Column              | Type          | Constraints                               | Description                                     |
-| ------------------- | ------------- | ----------------------------------------- | ----------------------------------------------- |
-| id                  | SERIAL        | PRIMARY KEY                               | Auto-incrementing identifier                    |
-| user_id             | INTEGER       | NOT NULL, INDEX                           | User who owns this progress                     |
-| enrollment_id       | INTEGER       | FK → enrollments(id), NOT NULL, INDEX     | The enrollment this progress belongs to         |
-| item_type           | VARCHAR(20)   | NOT NULL                                  | 'lesson', 'quiz', or 'summary'                 |
-| item_id             | VARCHAR(50)   | NOT NULL                                  | MongoDB ID of the lesson/quiz/summary           |
-| progress_percentage | DECIMAL(5,2)  | NOT NULL, DEFAULT 0.00                    | 0.00 to 100.00 — how far the user has progressed |
-| completed_at        | TIMESTAMP     | NULLABLE                                  | Set only when progress_percentage reaches 100   |
-| created_at          | TIMESTAMP     | NOT NULL, DEFAULT NOW()                   | Row creation timestamp                          |
-| updated_at          | TIMESTAMP     | NOT NULL, DEFAULT NOW()                   | Last progress update timestamp                  |
+| Column              | Type         | Constraints                           | Description                                      |
+| ------------------- | ------------ | ------------------------------------- | ------------------------------------------------ |
+| id                  | SERIAL       | PRIMARY KEY                           | Auto-incrementing identifier                     |
+| user_id             | INTEGER      | NOT NULL, INDEX                       | User who owns this progress                      |
+| enrollment_id       | INTEGER      | FK → enrollments(id), NOT NULL, INDEX | The enrollment this progress belongs to          |
+| item_type           | VARCHAR(20)  | NOT NULL                              | 'lesson', 'quiz', or 'summary'                   |
+| item_id             | VARCHAR(50)  | NOT NULL                              | MongoDB ID of the lesson/quiz/summary            |
+| progress_percentage | DECIMAL(5,2) | NOT NULL, DEFAULT 0.00                | 0.00 to 100.00 — how far the user has progressed |
+| completed_at        | TIMESTAMP    | NULLABLE                              | Set only when progress_percentage reaches 100    |
+| created_at          | TIMESTAMP    | NOT NULL, DEFAULT NOW()               | Row creation timestamp                           |
+| updated_at          | TIMESTAMP    | NOT NULL, DEFAULT NOW()               | Last progress update timestamp                   |
 
 **Unique Constraint:** `(user_id, enrollment_id, item_type, item_id)`
 
 **How Progress Aggregation Works:**
+
 - **Lesson progress**: Stored directly as `progress_percentage` (0–100) in each row
 - **Module progress**: Average of all lesson percentages within the module (lessons with no row = 0%)
 - **Course progress**: Average of ALL lesson percentages across ALL modules
@@ -469,22 +550,197 @@ Course learning materials.
 
 ---
 
+### 2.3 AI Service Entities
+
+#### **AI_CONVERSATIONS** (PostgreSQL)
+
+Chat sessions between students and AI Tutor.
+
+| Column     | Type      | Constraints               | Description                  |
+| ---------- | --------- | ------------------------- | ---------------------------- |
+| id         | SERIAL    | PRIMARY KEY               | Auto-incrementing identifier |
+| session_id | UUID      | UNIQUE, NOT NULL, DEFAULT | Unique session identifier    |
+| user_id    | INTEGER   | NOT NULL, INDEX           | Student user ID              |
+| course_id  | INTEGER   | NOT NULL                  | Course context for chat      |
+| created_at | TIMESTAMP | DEFAULT NOW()             | Session start time           |
+| updated_at | TIMESTAMP | ON UPDATE NOW()           | Last activity time           |
+| is_active  | BOOLEAN   | DEFAULT TRUE              | Session active status        |
+
+---
+
+#### **AI_MESSAGES** (PostgreSQL)
+
+Individual messages within AI Tutor conversations.
+
+| Column            | Type        | Constraints                         | Description                   |
+| ----------------- | ----------- | ----------------------------------- | ----------------------------- |
+| id                | SERIAL      | PRIMARY KEY                         | Auto-incrementing identifier  |
+| conversation_id   | INTEGER     | FK → ai_conversations(id), NOT NULL | Parent conversation           |
+| role              | VARCHAR(20) | NOT NULL                            | 'user', 'assistant', 'system' |
+| content           | TEXT        | NOT NULL                            | Message content               |
+| retrieved_context | JSONB       |                                     | RAG context chunks            |
+| tokens_used       | INTEGER     |                                     | LLM tokens consumed           |
+| model             | VARCHAR(50) |                                     | Model used (gpt-4o-mini)      |
+| latency_ms        | INTEGER     |                                     | Response latency              |
+| created_at        | TIMESTAMP   | DEFAULT NOW()                       | Message timestamp             |
+
+---
+
+#### **AI_GENERATION_HISTORY** (PostgreSQL)
+
+Audit trail for quiz/summary generation by teachers.
+
+| Column             | Type         | Constraints         | Description                         |
+| ------------------ | ------------ | ------------------- | ----------------------------------- |
+| id                 | SERIAL       | PRIMARY KEY         | Auto-incrementing identifier        |
+| course_id          | INTEGER      | NOT NULL            | Course ID                           |
+| module_id          | VARCHAR(100) | NOT NULL            | Module ID (MongoDB ObjectId string) |
+| generation_type    | VARCHAR(20)  | NOT NULL            | 'quiz' or 'summary'                 |
+| version            | INTEGER      | NOT NULL            | Generation version (1, 2, 3...)     |
+| triggered_by       | INTEGER      | NOT NULL            | Teacher user ID                     |
+| input_lesson_count | INTEGER      |                     | Number of lessons processed         |
+| model              | VARCHAR(50)  |                     | LLM model used                      |
+| tokens_used        | INTEGER      |                     | Total tokens consumed               |
+| latency_ms         | INTEGER      |                     | Generation time                     |
+| status             | VARCHAR(20)  | DEFAULT 'completed' | 'pending', 'completed', 'failed'    |
+| error_message      | TEXT         |                     | Error details if failed             |
+| created_at         | TIMESTAMP    | DEFAULT NOW()       | Generation timestamp                |
+
+---
+
+#### **RAG_INDEX_STATUS** (PostgreSQL)
+
+Tracks RAG indexing status for each course.
+
+| Column            | Type        | Constraints       | Description                                |
+| ----------------- | ----------- | ----------------- | ------------------------------------------ |
+| id                | SERIAL      | PRIMARY KEY       | Auto-incrementing identifier               |
+| course_id         | INTEGER     | UNIQUE, NOT NULL  | Course ID                                  |
+| status            | VARCHAR(20) | DEFAULT 'pending' | 'pending', 'indexing', 'indexed', 'failed' |
+| indexed_at        | TIMESTAMP   |                   | Last successful index time                 |
+| total_chunks      | INTEGER     |                   | Number of text chunks indexed              |
+| total_lessons     | INTEGER     |                   | Number of lessons processed                |
+| embedding_model   | VARCHAR(50) |                   | Model used (text-embedding-3-small)        |
+| last_content_hash | VARCHAR(64) |                   | MD5 hash for change detection              |
+| created_at        | TIMESTAMP   | DEFAULT NOW()     | Record creation time                       |
+| updated_at        | TIMESTAMP   | ON UPDATE NOW()   | Last update time                           |
+
+---
+
+#### **AI_GENERATED_CONTENT** (MongoDB)
+
+AI-generated quizzes and summaries for course modules.
+
+```json
+{
+  "_id": "ObjectId",
+  "course_id": 123,
+  "module_id": "mod_abc123",
+
+  "summary": {
+    "content": "This module covers the fundamentals of...",
+    "version": 3,
+    "generated_at": "2026-02-26T10:00:00Z",
+    "model": "gpt-4o-mini",
+    "is_edited": true,
+    "edited_at": "2026-02-26T12:00:00Z",
+    "original_content": "Original AI-generated text..."
+  },
+
+  "quiz": {
+    "questions": [
+      {
+        "question_id": "q1",
+        "question": "What is the main purpose of...",
+        "type": "multiple_choice",
+        "options": ["Option A", "Option B", "Option C", "Option D"],
+        "correct_answer": "B",
+        "explanation": "Because...",
+        "difficulty": "medium"
+      }
+    ],
+    "version": 2,
+    "generated_at": "2026-02-26T10:30:00Z",
+    "model": "gpt-4o-mini",
+    "is_edited": false,
+    "settings": {
+      "num_questions": 10,
+      "difficulty_distribution": { "easy": 3, "medium": 5, "hard": 2 }
+    }
+  },
+
+  "source_lesson_ids": ["lesson_1", "lesson_2", "lesson_3"],
+  "created_at": "2026-02-26T10:00:00Z",
+  "updated_at": "2026-02-26T12:00:00Z"
+}
+```
+
+---
+
+#### **COURSE_EMBEDDINGS** (Qdrant Vector DB)
+
+Vector embeddings for RAG-based AI Tutor.
+
+```python
+# Collection Configuration
+{
+    "collection_name": "course_embeddings",
+    "vectors": {
+        "size": 1536,           # text-embedding-3-small dimensions
+        "distance": "Cosine"
+    }
+}
+
+# Point Structure
+{
+    "id": "uuid-string",
+    "vector": [0.123, 0.456, ...],  # 1536 dimensions
+    "payload": {
+        "course_id": 123,
+        "module_id": "mod_abc123",
+        "lesson_id": "lesson_xyz",
+        "chunk_index": 0,
+        "content_type": "text",       # text, pdf, transcript
+        "text": "The actual chunk content...",
+        "metadata": {
+            "lesson_title": "Introduction to...",
+            "module_title": "Fundamentals",
+            "course_title": "Python Programming"
+        }
+    }
+}
+```
+
+---
+
 ## 3. Relationship Summary
 
-| Relationship                           | Cardinality | Description                                    |
-| -------------------------------------- | ----------- | ---------------------------------------------- |
-| Users → Instructor_Profiles            | 1:1         | Instructors have one profile                   |
-| Instructor_Profiles → Courses          | 1:N         | One instructor creates many courses            |
-| Users → Enrollments                    | 1:N         | One student has many enrollments               |
-| Courses → Enrollments                  | 1:N         | One course has many enrollments                |
-| Enrollments → Progress                 | 1:N         | One enrollment has many progress records (one per lesson) |
-| Enrollments → Certificates             | 1:1         | Each completion has one certificate            |
-| Users → Notifications                  | 1:N         | One user receives many notifications           |
-| Users → Events                         | 1:N         | One user triggers many events                  |
-| Users → Workflow_Executions            | 1:N         | One user triggers many workflows               |
-| Courses → Course_Content (MongoDB)     | 1:1         | Each course has content document               |
-| Courses → Course_Materials (MongoDB)   | 1:N         | Each course has many materials                 |
-| Enrollments ↔ Course_Content (MongoDB) | Reference   | Enrollments store MongoDB module/lesson IDs    |
+| Relationship                                 | Cardinality | Description                                               |
+| -------------------------------------------- | ----------- | --------------------------------------------------------- |
+| Users → Instructor_Profiles                  | 1:1         | Instructors have one profile                              |
+| Instructor_Profiles → Courses                | 1:N         | One instructor creates many courses                       |
+| Users → Enrollments                          | 1:N         | One student has many enrollments                          |
+| Courses → Enrollments                        | 1:N         | One course has many enrollments                           |
+| Enrollments → Progress                       | 1:N         | One enrollment has many progress records (per item)       |
+| Enrollments → Certificates                   | 1:1         | Each completion has one certificate                       |
+| Users → Notifications                        | 1:N         | One user receives many notifications                      |
+| Users → Events                               | 1:N         | One user triggers many events                             |
+| Users → Workflow_Executions                  | 1:N         | One user triggers many workflows                          |
+| Courses → Course_Content (MongoDB)           | 1:1         | Each course has content document                          |
+| Courses → Course_Materials (MongoDB)         | 1:N         | Each course has many materials                            |
+| Enrollments ↔ Course_Content (MongoDB)       | Reference   | Enrollments store MongoDB module/lesson IDs               |
+| **Users → AI_Conversations**                           | **1:N**        | **One student has many AI tutor sessions (logical FK)**             |
+| **AI_Conversations → AI_Messages**                     | **1:N**        | **One session has many messages (CASCADE DELETE)**                  |
+| **AI_Messages.retrieved_context → Course_Embeddings**  | **ref (JSONB)**| **Each assistant message stores Qdrant chunk IDs + scores used**    |
+| **Courses → AI_Conversations**                         | **1:N**        | **One course has many tutor sessions (logical FK)**                 |
+| **Courses → RAG_Index_Status**                         | **1:1**        | **Each course has one RAG index status row (UNIQUE course_id)**     |
+| **RAG_Index_Status → Course_Embeddings (Qdrant)**      | **tracks**     | **Status row reflects what is indexed in Qdrant for that course**   |
+| **Users → AI_Generation_History**                      | **1:N**        | **One teacher triggers many generations (triggered_by FK)**         |
+| **Courses → AI_Generation_History**                    | **1:N**        | **One course can have many quiz/summary generations (logical FK)**  |
+| **AI_Generation_History ↔ AI_Generated_Content**       | **soft link**  | **(course_id, module_id) ties audit log in PG to output in MongoDB**|
+| **Courses → AI_Generated_Content (MongoDB)**           | **1:N**        | **One course has one AI content doc per module**                    |
+| **Courses → Course_Embeddings (Qdrant)**               | **1:N**        | **One course has many vector chunks (one per text chunk)**          |
+| **Course_Content (MongoDB) → Course_Embeddings**       | **source**     | **Lesson text is chunked, embedded, and stored in Qdrant**          |
 
 ---
 
@@ -495,7 +751,6 @@ Course learning materials.
 ```sql
 -- Users
 CREATE UNIQUE INDEX idx_users_email ON users(email);
-CREATE UNIQUE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_is_active ON users(is_active);
 
@@ -542,6 +797,25 @@ CREATE INDEX idx_analytics_name_recorded ON analytics_metrics(metric_name, recor
 CREATE UNIQUE INDEX idx_workflows_workflow_id ON workflow_executions(workflow_id);
 CREATE INDEX idx_workflows_type_status ON workflow_executions(workflow_type, status);
 CREATE INDEX idx_workflows_entity ON workflow_executions(entity_type, entity_id);
+
+-- AI Conversations
+CREATE UNIQUE INDEX idx_ai_conversations_session ON ai_conversations(session_id);
+CREATE INDEX idx_ai_conversations_user ON ai_conversations(user_id);
+CREATE INDEX idx_ai_conversations_course ON ai_conversations(course_id);
+CREATE INDEX idx_ai_conversations_user_course ON ai_conversations(user_id, course_id);
+
+-- AI Messages
+CREATE INDEX idx_ai_messages_conversation ON ai_messages(conversation_id);
+CREATE INDEX idx_ai_messages_created ON ai_messages(created_at);
+
+-- AI Generation History
+CREATE INDEX idx_ai_gen_history_course_module ON ai_generation_history(course_id, module_id);
+CREATE INDEX idx_ai_gen_history_type ON ai_generation_history(generation_type);
+CREATE INDEX idx_ai_gen_history_triggered_by ON ai_generation_history(triggered_by);
+
+-- RAG Index Status
+CREATE UNIQUE INDEX idx_rag_status_course ON rag_index_status(course_id);
+CREATE INDEX idx_rag_status_status ON rag_index_status(status);
 ```
 
 ### MongoDB Indexes
@@ -556,6 +830,25 @@ db.course_content.createIndex({ updated_at: -1 });
 db.course_materials.createIndex({ course_id: 1, module_id: 1, lesson_id: 1 });
 db.course_materials.createIndex({ file_type: 1 });
 db.course_materials.createIndex({ created_at: -1 });
+
+// ai_generated_content collection
+db.ai_generated_content.createIndex(
+  { course_id: 1, module_id: 1 },
+  { unique: true },
+);
+db.ai_generated_content.createIndex({ course_id: 1 });
+db.ai_generated_content.createIndex({ updated_at: -1 });
+```
+
+### Qdrant Indexes
+
+```python
+# Qdrant creates indexes automatically on payload fields for filtering
+# Key filterable fields:
+# - course_id (exact match filtering)
+# - module_id (exact match filtering)
+# - lesson_id (exact match filtering)
+# - content_type (categorical filtering)
 ```
 
 ---
@@ -571,13 +864,9 @@ ADD CONSTRAINT fk_courses_instructor
 FOREIGN KEY (instructor_id) REFERENCES instructor_profiles(id) ON DELETE RESTRICT;
 
 -- Enrollments
-ALTER TABLE enrollments
-ADD CONSTRAINT fk_enrollments_student
-FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE;
-
-ALTER TABLE enrollments
-ADD CONSTRAINT fk_enrollments_course
-FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE;
+-- Note: student_id and course_id are logical FKs (cross-service reference)
+-- No DB-level FK constraint since users table is in user-service DB
+-- Referential integrity enforced at application level via API validation
 
 -- Progress
 ALTER TABLE progress
@@ -611,6 +900,20 @@ FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE workflow_executions
 ADD CONSTRAINT fk_workflows_user
 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- AI Conversations
+-- Note: user_id is a logical FK (cross-service reference to user-service)
+-- No DB-level FK since users table is in a different database
+
+-- AI Messages
+ALTER TABLE ai_messages
+ADD CONSTRAINT fk_ai_messages_conversation
+FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE;
+
+-- AI Generation History
+ALTER TABLE ai_generation_history
+ADD CONSTRAINT fk_ai_gen_history_user
+FOREIGN KEY (triggered_by) REFERENCES users(id) ON DELETE SET NULL;
 ```
 
 ### Check Constraints
@@ -634,7 +937,7 @@ CHECK (status IN ('active', 'completed', 'dropped', 'suspended'));
 -- Progress completion percentage
 ALTER TABLE progress
 ADD CONSTRAINT chk_progress_percentage
-CHECK (completion_percentage >= 0 AND completion_percentage <= 100);
+CHECK (progress_percentage >= 0 AND progress_percentage <= 100);
 
 -- Courses price non-negative
 ALTER TABLE courses
@@ -651,21 +954,26 @@ CHECK (average_rating >= 0 AND average_rating <= 5);
 
 ## 6. Event Types Reference
 
-| Event Type                  | Trigger          | Consumers                            |
-| --------------------------- | ---------------- | ------------------------------------ |
-| `user.registered`           | User signs up    | Analytics, Notification              |
-| `user.verified`             | Email verified   | Analytics                            |
-| `course.created`            | Course created   | Analytics                            |
-| `course.published`          | Course published | Analytics, Content Processing        |
-| `course.updated`            | Course modified  | Content Processing                   |
-| `course.archived`           | Course archived  | Notification, Analytics              |
-| `enrollment.created`        | Student enrolls  | Analytics, Progress, Notification    |
-| `enrollment.completed`      | Course completed | Analytics, Certificate, Notification |
-| `enrollment.dropped`        | Student drops    | Analytics                            |
-| `progress.updated`          | Lesson completed | Analytics                            |
-| `progress.module_completed` | Module done      | Analytics, Notification              |
-| `certificate.issued`        | Cert generated   | Notification                         |
-| `certificate.revoked`       | Cert revoked     | Notification                         |
+| Event Type                  | Trigger          | Consumers                                 |
+| --------------------------- | ---------------- | ----------------------------------------- |
+| `user.registered`           | User signs up    | Analytics, Notification                   |
+| `user.verified`             | Email verified   | Analytics                                 |
+| `course.created`            | Course created   | Analytics                                 |
+| `course.published`          | Course published | Analytics, Content Processing, AI Service |
+| `course.updated`            | Course modified  | Content Processing                        |
+| `course.archived`           | Course archived  | Notification, Analytics, AI Service       |
+| `content.updated`           | Content changed  | AI Service                                |
+| `enrollment.created`        | Student enrolls  | Analytics, Progress, Notification         |
+| `enrollment.completed`      | Course completed | Analytics, Certificate, Notification      |
+| `enrollment.dropped`        | Student drops    | Analytics                                 |
+| `progress.updated`          | Lesson completed | Analytics                                 |
+| `progress.module_completed` | Module done      | Analytics, Notification                   |
+| `certificate.issued`        | Cert generated   | Notification                              |
+| `certificate.revoked`       | Cert revoked     | Notification                              |
+| `quiz.generated`            | AI quiz created  | Notification                              |
+| `summary.generated`         | AI summary done  | Notification                              |
+| `rag.indexed`               | RAG index done   | Notification, Analytics                   |
+| `rag.failed`                | RAG index failed | Notification                              |
 
 ---
 
@@ -690,13 +998,14 @@ CHECK (average_rating >= 0 AND average_rating <= 5);
 
 ## 8. Database Technology Summary
 
-| Data Store       | Technology    | Purpose                                                        | Access Pattern              |
-| ---------------- | ------------- | -------------------------------------------------------------- | --------------------------- |
-| Relational Data  | PostgreSQL 15 | Users, Courses, Enrollments, Progress, Certificates, Analytics | ACID transactions, OLTP     |
-| Flexible Content | MongoDB 7     | Course modules, lessons, materials                             | Document reads, nested data |
-| Session/Cache    | Redis 7       | Sessions, rate limits, progress cache                          | Low-latency reads           |
-| Event Stream     | Kafka         | Event sourcing, service communication                          | Pub/Sub, replay             |
+| Data Store       | Technology    | Purpose                                                                          | Access Pattern               |
+| ---------------- | ------------- | -------------------------------------------------------------------------------- | ---------------------------- |
+| Relational Data  | PostgreSQL 15 | Users, Courses, Enrollments, Progress, Certificates, Analytics, AI Conversations | ACID transactions, OLTP      |
+| Flexible Content | MongoDB 7     | Course modules, lessons, materials, AI-generated content (quiz/summary)          | Document reads, nested data  |
+| Vector Database  | Qdrant        | Course embeddings for RAG-based AI Tutor                                         | Similarity search, filtering |
+| Session/Cache    | Redis 7       | Sessions, rate limits, progress cache                                            | Low-latency reads            |
+| Event Stream     | Kafka         | Event sourcing, service communication                                            | Pub/Sub, replay              |
 
 ---
 
-_Document Version: 1.2 | Last Updated: February 11, 2026_
+_Document Version: 2.0 | Last Updated: February 26, 2026_
