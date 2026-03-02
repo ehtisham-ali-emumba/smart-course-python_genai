@@ -27,6 +27,29 @@ class ModuleSummaryService:
         doc = await self.summary_repo.get_published_by_course_module(course_id, module_id)
         return self._to_response(doc) if doc else None
 
+    async def get_summary_for_viewer(
+        self,
+        course_id: int,
+        module_id: str,
+        viewer_id: int,
+        viewer_role: str,
+    ) -> dict[str, Any] | None:
+        if viewer_role == "admin":
+            doc = await self.summary_repo.get_active_by_course_module(course_id, module_id)
+            return self._to_response(doc) if doc else None
+
+        if viewer_role == "instructor":
+            course = await self.course_repo.get_by_id(course_id)
+            if (
+                course is not None
+                and not bool(getattr(course, "is_deleted", False))
+                and int(getattr(course, "instructor_id")) == viewer_id
+            ):
+                doc = await self.summary_repo.get_active_by_course_module(course_id, module_id)
+                return self._to_response(doc) if doc else None
+
+        return await self.get_published_summary(course_id, module_id)
+
     async def create_summary(
         self,
         course_id: int,

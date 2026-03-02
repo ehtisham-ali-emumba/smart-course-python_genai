@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_current_user_id, require_instructor
+from api.dependencies import get_authenticated_user, require_instructor
 from core.database import get_db
 from core.mongodb import get_mongodb
 from schemas.quiz_summary import (
@@ -21,11 +21,12 @@ router = APIRouter()
 async def get_module_summary(
     course_id: int,
     module_id: str,
-    user_id: int = Depends(get_current_user_id),
+    authenticated_user: tuple[int, str] = Depends(get_authenticated_user),
     pg_db: AsyncSession = Depends(get_db),
 ):
+    user_id, role = authenticated_user
     service = ModuleSummaryService(pg_db, get_mongodb())
-    summary = await service.get_published_summary(course_id, module_id)
+    summary = await service.get_summary_for_viewer(course_id, module_id, user_id, role)
     if not summary:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not found")
     return SummaryResponse(**summary)
