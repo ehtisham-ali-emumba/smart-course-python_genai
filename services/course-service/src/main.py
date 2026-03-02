@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from api.router import router
+from api.uploads import router as uploads_router
 from config import settings
 from core.database import engine
 from core.mongodb import close_mongodb, connect_mongodb
@@ -58,6 +59,12 @@ app = FastAPI(
 
 # Include routers
 app.include_router(router)
+
+app.include_router(
+    uploads_router,
+    prefix="/uploads",
+    tags=["File Uploads"],
+)
 
 
 @app.get("/health")

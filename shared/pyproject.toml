@@ -14,7 +14,10 @@ dependencies = [
     "aiokafka",
     "confluent-kafka",
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "boto3>=1.34.0",          # ← ADD THIS
+    "botocore>=1.34.0",       # ← ADD THIS
+    "python-multipart>=0.0.6" # ← ADD THIS (for UploadFile support)
 ]
 
 [tool.setuptools.packages.find]

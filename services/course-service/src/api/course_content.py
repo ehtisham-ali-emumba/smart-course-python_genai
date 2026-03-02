@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from api.dependencies import get_current_user_id, require_instructor
 from core.mongodb import get_mongodb
+from core.s3 import get_s3_uploader
 from schemas.course_content import (
     CourseContentCreate,
     CourseContentResponse,
@@ -11,8 +14,19 @@ from schemas.course_content import (
     MediaResourceUpdate,
     ModuleCreate,
     ModuleUpdate,
+    ResourceSchema,
 )
 from services.course_content import CourseContentService
+from shared.storage.s3 import S3Uploader
+
+# ─── Map lesson type → S3 folder and allowed MIME category ───────────────────
+
+LESSON_TYPE_CONFIG: dict[str, dict] = {
+    "video": {"folder": "course-content/videos", "category": "video", "max_mb": 500},
+    "text": {"folder": "course-content/documents", "category": "pdf", "max_mb": 50},
+    "assignment": {"folder": "course-content/documents", "category": "document", "max_mb": 50},
+    "quiz": {"folder": "course-content/images", "category": "image", "max_mb": 20},
+}
 
 router = APIRouter()
 
@@ -79,6 +93,100 @@ async def add_lesson(
     db = get_mongodb()
     service = CourseContentService(db)
     content = await service.add_lesson(course_id, module_id, data)
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course content or module not found",
+        )
+    return CourseContentResponse(**content)
+
+
+@router.post(
+    "/{course_id}/content/modules/{module_id}/lessons/with-file",
+    response_model=CourseContentResponse,
+    summary="Upload a file AND create a lesson in one multipart/form-data request",
+)
+async def add_lesson_with_file(
+    course_id: int,
+    module_id: str,
+    # ── lesson metadata as Form fields ──
+    title: str = Form(...),
+    lesson_type: str = Form(..., alias="type"),
+    order: int = Form(...),
+    duration_minutes: Optional[int] = Form(None),
+    is_preview: bool = Form(False),
+    # ── optional file ──
+    file: Optional[UploadFile] = File(
+        None, description="Optional lesson file (video, pdf, image, etc.)"
+    ),
+    instructor_id: int = Depends(require_instructor),
+    uploader: S3Uploader = Depends(get_s3_uploader),
+) -> CourseContentResponse:
+    """
+    Create a lesson and optionally upload a file in a single multipart/form-data request.
+
+    The uploaded file is stored in S3; its URL is written to `lesson.content`
+    and an entry is appended to `lesson.resources`.
+
+    Form fields:
+    - title (str)
+    - type (str): video | text | quiz | assignment
+    - order (int)
+    - duration_minutes (int, optional)
+    - is_preview (bool, default false)
+    - file (binary, optional)
+
+    Allowed file types per lesson type:
+    - video       → mp4, webm, ogg, quicktime, avi  (max 500 MB)
+    - text        → pdf                              (max  50 MB)
+    - assignment  → pdf, docx, xlsx, zip             (max  50 MB)
+    - quiz        → jpeg, png, gif, webp, svg        (max  20 MB)
+    """
+    config = LESSON_TYPE_CONFIG.get(lesson_type)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid lesson type '{lesson_type}'. Must be one of: {list(LESSON_TYPE_CONFIG)}",
+        )
+
+    content_url: Optional[str] = None
+    resources: list[ResourceSchema] = []
+
+    if file and file.filename:
+        try:
+            result = await uploader.upload_file(
+                file=file,
+                folder=config["folder"],
+                allowed_category=config["category"],
+                max_size_mb=config["max_mb"],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+        content_url = result.url
+        resources.append(
+            ResourceSchema(
+                name=result.filename,
+                url=result.url,
+                type=result.content_type,
+            )
+        )
+
+    lesson_data = LessonCreate(
+        title=title,
+        type=lesson_type,
+        content=content_url,
+        duration_minutes=duration_minutes,
+        order=order,
+        is_preview=is_preview,
+        resources=resources,
+    )
+
+    db = get_mongodb()
+    service = CourseContentService(db)
+    content = await service.add_lesson(course_id, module_id, lesson_data)
     if not content:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -213,9 +321,7 @@ async def update_media_resource(
     """Update a media resource by index (instructors only)."""
     db = get_mongodb()
     service = CourseContentService(db)
-    content = await service.update_resource(
-        course_id, module_id, lesson_id, resource_index, data
-    )
+    content = await service.update_resource(course_id, module_id, lesson_id, resource_index, data)
     if not content:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

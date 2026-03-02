@@ -12,6 +12,7 @@ def generate_object_id() -> str:
 
 class ResourceSchema(BaseModel):
     """A single resource attached to a lesson."""
+
     resource_id: str = Field(default_factory=generate_object_id)
     name: str
     url: str
@@ -21,6 +22,7 @@ class ResourceSchema(BaseModel):
 
 class LessonSchema(BaseModel):
     """A single lesson within a module."""
+
     lesson_id: str = Field(default_factory=generate_object_id)
     title: str
     type: str = Field(..., pattern=r"^(video|text|quiz|assignment)$")
@@ -34,6 +36,7 @@ class LessonSchema(BaseModel):
 
 class ModuleSchema(BaseModel):
     """A single module containing lessons."""
+
     module_id: str = Field(default_factory=generate_object_id)
     title: str
     description: Optional[str] = None
@@ -45,6 +48,7 @@ class ModuleSchema(BaseModel):
 
 class CourseContentMetadata(BaseModel):
     """Metadata stored alongside course content."""
+
     total_modules: int = 0
     total_lessons: int = 0
     total_duration_hours: Optional[float] = None
@@ -53,12 +57,14 @@ class CourseContentMetadata(BaseModel):
 
 class CourseContentCreate(BaseModel):
     """Schema for creating/replacing full course content."""
+
     modules: list[ModuleSchema] = []
     metadata: Optional[CourseContentMetadata] = None
 
 
 class CourseContentResponse(BaseModel):
     """Schema for course content API responses."""
+
     course_id: int
     modules: list[ModuleSchema] = []
     metadata: Optional[CourseContentMetadata] = None
@@ -68,6 +74,7 @@ class CourseContentResponse(BaseModel):
 
 class ModuleCreate(BaseModel):
     """Schema for adding a single module."""
+
     module_id: str = Field(default_factory=generate_object_id)
     title: str
     description: Optional[str] = None
@@ -79,6 +86,7 @@ class ModuleCreate(BaseModel):
 
 class LessonCreate(BaseModel):
     """Schema for adding a single lesson to a module."""
+
     lesson_id: str = Field(default_factory=generate_object_id)
     title: str
     type: str = Field(..., pattern=r"^(video|text|quiz|assignment)$")
@@ -92,6 +100,7 @@ class LessonCreate(BaseModel):
 
 class ModuleUpdate(BaseModel):
     """Schema for updating a module."""
+
     title: Optional[str] = None
     description: Optional[str] = None
     order: Optional[int] = None
@@ -101,6 +110,7 @@ class ModuleUpdate(BaseModel):
 
 class LessonUpdate(BaseModel):
     """Schema for updating a lesson."""
+
     title: Optional[str] = None
     type: Optional[str] = Field(None, pattern=r"^(video|text|quiz|assignment)$")
     content: Optional[str] = None
@@ -112,6 +122,7 @@ class LessonUpdate(BaseModel):
 
 class MediaResourceCreate(BaseModel):
     """Schema for adding media resources."""
+
     resource_id: str = Field(default_factory=generate_object_id)
     name: str
     url: str
@@ -121,7 +132,18 @@ class MediaResourceCreate(BaseModel):
 
 class MediaResourceUpdate(BaseModel):
     """Schema for updating a media resource."""
+
     name: Optional[str] = None
     url: Optional[str] = None
     type: Optional[str] = Field(None, pattern=r"^(video|pdf|audio|image|link)$")
     is_active: Optional[bool] = None
+
+
+class S3UploadResponse(BaseModel):
+    """Returned after a successful file upload to S3."""
+
+    key: str  # S3 object key, store this in MongoDB
+    url: str  # Permanent S3 URL
+    filename: str  # Original filename uploaded by the client
+    content_type: str  # Detected MIME type
+    size_bytes: int  # File size in bytes
