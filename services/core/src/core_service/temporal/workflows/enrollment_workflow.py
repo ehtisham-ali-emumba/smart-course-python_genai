@@ -22,10 +22,8 @@ with workflow.unsafe.imports_passed_through():
         InitializeProgressInput,
         FetchCourseModulesInput,
         # Notification activities
-        send_enrollment_welcome_email,
-        send_in_app_notification,
-        SendWelcomeEmailInput,
-        SendInAppNotificationInput,
+        trigger_enrollment_notifications,
+        TriggerEnrollmentNotificationsInput,
     )
 
 
@@ -74,8 +72,7 @@ class EnrollmentWorkflow:
     2. Fetch user details
     3. Fetch course details
     4. Initialize progress tracking
-    5. Send welcome email
-    6. Send in-app notification
+    5. Trigger enrollment notifications (email + in-app via notification-service)
 
     Each step is an activity that makes an HTTP call to a microservice.
     If any step fails, the workflow knows exactly which step failed
@@ -114,11 +111,9 @@ class EnrollmentWorkflow:
                 input.student_id, input.course_id, input.enrollment_id
             )
 
-            # Step 5: Send welcome email
-            await self._send_welcome_email(input)
-
-            # Step 6: Send in-app notification
-            await self._send_in_app_notification(input)
+            # Step 5: Trigger enrollment notifications (email + in-app)
+            # The notifications/enrollment endpoint handles both via Celery tasks
+            await self._send_enrollment_notifications(input)
 
             workflow.logger.info(
                 "EnrollmentWorkflow completed successfully for student_id=%d, course_id=%d",
@@ -267,9 +262,16 @@ class EnrollmentWorkflow:
             )
             self.steps_completed.append(f"{step_name}_skipped")
 
-    async def _send_welcome_email(self, input: EnrollmentWorkflowInput) -> None:
-        """Step 5: Send welcome email."""
-        step_name = "send_welcome_email"
+    async def _send_enrollment_notifications(
+        self, input: EnrollmentWorkflowInput
+    ) -> None:
+        """Step 5: Trigger enrollment notifications (email + in-app).
+
+        Calls notifications/enrollment endpoint which handles both:
+        - Welcome email via Celery task
+        - In-app notification via Celery task
+        """
+        step_name = "trigger_enrollment_notifications"
         workflow.logger.info("Step: %s", step_name)
 
         user_name = None
@@ -281,8 +283,8 @@ class EnrollmentWorkflow:
             course_title = self.course_details.get("title", course_title)
 
         result = await workflow.execute_activity(
-            send_enrollment_welcome_email,
-            SendWelcomeEmailInput(
+            trigger_enrollment_notifications,
+            TriggerEnrollmentNotificationsInput(
                 student_id=input.student_id,
                 student_email=input.student_email,
                 student_name=user_name,
@@ -296,39 +298,9 @@ class EnrollmentWorkflow:
         if result.success:
             self.steps_completed.append(step_name)
         else:
-            # Email is non-critical
+            # Notifications are non-critical
             workflow.logger.warning(
-                "send_welcome_email failed (non-critical): %s",
-                result.error,
-            )
-            self.steps_completed.append(f"{step_name}_failed")
-
-    async def _send_in_app_notification(self, input: EnrollmentWorkflowInput) -> None:
-        """Step 6: Send in-app notification."""
-        step_name = "send_in_app_notification"
-        workflow.logger.info("Step: %s", step_name)
-
-        course_title = input.course_title
-        if self.course_details:
-            course_title = self.course_details.get("title", course_title)
-
-        result = await workflow.execute_activity(
-            send_in_app_notification,
-            SendInAppNotificationInput(
-                user_id=input.student_id,
-                title="Enrollment Successful!",
-                message=f"You have been enrolled in {course_title}. Start learning now!",
-                notification_type="success",
-            ),
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=DEFAULT_RETRY_POLICY,
-        )
-
-        if result.success:
-            self.steps_completed.append(step_name)
-        else:
-            workflow.logger.warning(
-                "send_in_app_notification failed (non-critical): %s",
+                "trigger_enrollment_notifications failed (non-critical): %s",
                 result.error,
             )
             self.steps_completed.append(f"{step_name}_failed")

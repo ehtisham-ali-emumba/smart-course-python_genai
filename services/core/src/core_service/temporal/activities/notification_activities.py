@@ -17,7 +17,7 @@ NOTIFICATION_SERVICE = core_settings.NOTIFICATION_SERVICE_URL
 
 
 @dataclass
-class SendWelcomeEmailInput:
+class TriggerEnrollmentNotificationsInput:
     student_id: int
     student_email: str
     student_name: str | None
@@ -27,7 +27,7 @@ class SendWelcomeEmailInput:
 
 
 @dataclass
-class SendWelcomeEmailOutput:
+class TriggerEnrollmentNotificationsOutput:
     success: bool
     notification_id: str | None = None
     error: str | None = None
@@ -81,13 +81,15 @@ class SendInstructorNotificationOutput:
 # ── Activities ─────────────────────────────────────────────────────────────────
 
 
-@activity.defn(name="send_enrollment_welcome_email")
-async def send_enrollment_welcome_email(
-    input: SendWelcomeEmailInput,
-) -> SendWelcomeEmailOutput:
+@activity.defn(name="trigger_enrollment_notifications")
+async def trigger_enrollment_notifications(
+    input: TriggerEnrollmentNotificationsInput,
+) -> TriggerEnrollmentNotificationsOutput:
     """
-    POST http://notification-service:8005/api/v1/notifications/enrollment
-    Uses EnrollmentNotificationRequest schema.
+    POST http://notification-service:8005/notifications/enrollment
+
+    Triggers both email and in-app notifications via Celery tasks
+    in the notification service.
     """
     url = f"{NOTIFICATION_SERVICE}/notifications/enrollment"
     headers = {"X-User-ID": str(input.student_id)}
@@ -95,21 +97,21 @@ async def send_enrollment_welcome_email(
     payload = {
         "user_id": input.student_id,
         "email": input.student_email,
-        "student_name": input.student_name,
         "course_id": input.course_id,
         "course_title": input.course_title,
+        "enrollment_id": input.enrollment_id,
         "instructor_name": "",  # Not available at this step
     }
 
     try:
         resp = await post_json(url, payload, headers=headers)
-        return SendWelcomeEmailOutput(
+        return TriggerEnrollmentNotificationsOutput(
             success=resp.get("success", True),
             notification_id=resp.get("notification_id"),
         )
     except Exception as e:
-        logger.warning("send_enrollment_welcome_email failed: %s", e)
-        return SendWelcomeEmailOutput(success=False, error=str(e))
+        logger.warning("trigger_enrollment_notifications failed: %s", e)
+        return TriggerEnrollmentNotificationsOutput(success=False, error=str(e))
 
 
 @activity.defn(name="send_in_app_notification")
@@ -117,7 +119,7 @@ async def send_in_app_notification(
     input: SendInAppNotificationInput,
 ) -> SendInAppNotificationOutput:
     """
-    POST http://notification-service:8005/api/v1/notifications/send
+    POST http://notification-service:8005/notifications/send
     Uses SendNotificationRequest schema.
     """
     url = f"{NOTIFICATION_SERVICE}/notifications/send"
@@ -125,8 +127,10 @@ async def send_in_app_notification(
 
     payload = {
         "user_id": input.user_id,
-        "title": input.title,
         "type": input.notification_type,
+        "channel": "in_app",
+        "priority": "normal",
+        "title": input.title,
         "message": input.message,
     }
 
@@ -146,7 +150,7 @@ async def send_course_published_notification(
     input: SendCoursePublishedNotificationInput,
 ) -> SendCoursePublishedNotificationOutput:
     """
-    POST http://notification-service:8005/api/v1/notifications/course
+    POST http://notification-service:8005/notifications/course
     Notifies all enrolled students that the course is now published.
     Uses CourseNotificationRequest schema with affected_user_ids.
     """
@@ -176,7 +180,7 @@ async def send_instructor_course_published_notification(
     input: SendInstructorNotificationInput,
 ) -> SendInstructorNotificationOutput:
     """
-    POST http://notification-service:8005/api/v1/notifications/course
+    POST http://notification-service:8005/notifications/course
     Notifies the instructor their course is live (and whether RAG was indexed).
     """
     url = f"{NOTIFICATION_SERVICE}/notifications/course"
@@ -202,19 +206,19 @@ async def send_instructor_course_published_notification(
 
 
 NOTIFICATION_ACTIVITIES = [
-    send_enrollment_welcome_email,
+    trigger_enrollment_notifications,
     send_in_app_notification,
     send_course_published_notification,
     send_instructor_course_published_notification,
 ]
 
 __all__ = [
-    "send_enrollment_welcome_email",
+    "trigger_enrollment_notifications",
     "send_in_app_notification",
     "send_course_published_notification",
     "send_instructor_course_published_notification",
-    "SendWelcomeEmailInput",
-    "SendWelcomeEmailOutput",
+    "TriggerEnrollmentNotificationsInput",
+    "TriggerEnrollmentNotificationsOutput",
     "SendInAppNotificationInput",
     "SendInAppNotificationOutput",
     "SendCoursePublishedNotificationInput",

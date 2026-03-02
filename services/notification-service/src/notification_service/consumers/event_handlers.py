@@ -15,7 +15,6 @@ class NotificationEventHandlers:
         self._handlers = {
             "user.registered": self._on_user_registered,
             "course.published": self._on_course_published,
-            "enrollment.created": self._on_enrollment_created,
             "enrollment.completed": self._on_enrollment_completed,
             "certificate.issued": self._on_certificate_issued,
         }
@@ -39,9 +38,7 @@ class NotificationEventHandlers:
             event_id=event.event_id,
         )
 
-    def _enqueue_task(
-        self, *, event_type: str, task_name: str, queue: str, kwargs: dict
-    ) -> None:
+    def _enqueue_task(self, *, event_type: str, task_name: str, queue: str, kwargs: dict) -> None:
         task = celery_app.send_task(task_name, kwargs=kwargs, queue=queue)
         log.info(
             "celery_task_enqueued",
@@ -97,36 +94,6 @@ class NotificationEventHandlers:
                 "title": "Course Published!",
                 "message": f"Your course '{p['title']}' is now live.",
                 "notification_type": "course_published",
-            },
-            queue="notification_queue",
-        )
-
-    async def _on_enrollment_created(self, event: EventEnvelope):
-        """Enrollment created → 2 tasks"""
-        p = event.payload
-
-        # Task 1: Confirmation email
-        self._enqueue_task(
-            event_type=event.event_type,
-            task_name="notification_service.tasks.email.send_enrollment_confirmation",
-            kwargs={
-                "student_id": p["student_id"],
-                "course_id": p["course_id"],
-                "course_title": p["course_title"],
-                "email": p["email"],
-            },
-            queue="email_queue",
-        )
-
-        # Task 2: In-app notification
-        self._enqueue_task(
-            event_type=event.event_type,
-            task_name="notification_service.tasks.notification.create_in_app_notification",
-            kwargs={
-                "user_id": p["student_id"],
-                "title": "Enrollment Confirmed!",
-                "message": f"You're enrolled in '{p['course_title']}'.",
-                "notification_type": "enrollment",
             },
             queue="notification_queue",
         )

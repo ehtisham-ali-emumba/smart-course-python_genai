@@ -5,8 +5,10 @@ from pydantic import BaseModel, Field
 
 # --- Enums ---
 
+
 class NotificationChannel(str, Enum):
     """Supported notification delivery channels."""
+
     EMAIL = "email"
     PUSH = "push"
     IN_APP = "in_app"
@@ -15,6 +17,7 @@ class NotificationChannel(str, Enum):
 
 class NotificationPriority(str, Enum):
     """Notification priority levels."""
+
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -23,6 +26,7 @@ class NotificationPriority(str, Enum):
 
 class NotificationType(str, Enum):
     """Types of notifications the service handles."""
+
     ENROLLMENT_WELCOME = "enrollment_welcome"
     ENROLLMENT_COMPLETED = "enrollment_completed"
     COURSE_PUBLISHED = "course_published"
@@ -36,37 +40,53 @@ class NotificationType(str, Enum):
 
 # --- Request Schemas ---
 
+
 class SendNotificationRequest(BaseModel):
     """Generic notification send request."""
+
     user_id: int = Field(..., description="Target user ID")
-    type: NotificationType = Field(default=NotificationType.GENERIC, description="Notification type")
-    channel: NotificationChannel = Field(default=NotificationChannel.EMAIL, description="Delivery channel")
-    priority: NotificationPriority = Field(default=NotificationPriority.NORMAL, description="Priority level")
+    type: NotificationType = Field(
+        default=NotificationType.GENERIC, description="Notification type"
+    )
+    channel: NotificationChannel = Field(
+        default=NotificationChannel.EMAIL, description="Delivery channel"
+    )
+    priority: NotificationPriority = Field(
+        default=NotificationPriority.NORMAL, description="Priority level"
+    )
     title: str = Field(..., min_length=1, max_length=255, description="Notification title")
     message: str = Field(..., min_length=1, description="Notification message body")
-    metadata: dict | None = Field(default=None, description="Additional metadata (course_id, enrollment_id, etc.)")
+    metadata: dict | None = Field(
+        default=None, description="Additional metadata (course_id, enrollment_id, etc.)"
+    )
 
 
 class EnrollmentNotificationRequest(BaseModel):
     """Notification request for enrollment events."""
+
     user_id: int = Field(..., description="Student user ID")
     course_id: int = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
     enrollment_id: int = Field(..., description="Enrollment ID")
     instructor_name: str = Field(default="", description="Instructor name")
+    email: str = Field(default="", description="Student email address")
 
 
 class CourseNotificationRequest(BaseModel):
     """Notification request for course events (published, archived, etc.)."""
+
     course_id: int = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
     instructor_id: int = Field(..., description="Instructor user ID")
     event: str = Field(..., description="Event type: 'published', 'archived', 'updated'")
-    affected_user_ids: list[int] = Field(default_factory=list, description="List of user IDs to notify")
+    affected_user_ids: list[int] = Field(
+        default_factory=list, description="List of user IDs to notify"
+    )
 
 
 class CertificateNotificationRequest(BaseModel):
     """Notification request when a certificate is issued."""
+
     user_id: int = Field(..., description="Student user ID")
     course_id: int = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
@@ -77,20 +97,29 @@ class CertificateNotificationRequest(BaseModel):
 
 class ProgressNotificationRequest(BaseModel):
     """Notification request for progress milestones."""
+
     user_id: int = Field(..., description="Student user ID")
     course_id: int = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
     enrollment_id: int = Field(..., description="Enrollment ID")
     module_title: str = Field(default="", description="Completed module title")
-    completion_percentage: float = Field(..., ge=0, le=100, description="Current completion percentage")
+    completion_percentage: float = Field(
+        ..., ge=0, le=100, description="Current completion percentage"
+    )
 
 
 # --- Response Schemas ---
 
+
 class NotificationResponse(BaseModel):
     """Standard response for notification requests."""
-    success: bool = Field(..., description="Whether the notification was queued/logged successfully")
+
+    success: bool = Field(
+        ..., description="Whether the notification was queued/logged successfully"
+    )
     message: str = Field(..., description="Human-readable status message")
     notification_type: NotificationType = Field(..., description="Type of notification processed")
-    channel: NotificationChannel = Field(default=NotificationChannel.EMAIL, description="Delivery channel used")
+    channel: NotificationChannel = Field(
+        default=NotificationChannel.EMAIL, description="Delivery channel used"
+    )
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Processing timestamp")
