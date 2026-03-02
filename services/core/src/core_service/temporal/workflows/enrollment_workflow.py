@@ -37,6 +37,7 @@ class EnrollmentWorkflowInput:
     course_id: int
     course_title: str
     student_email: str
+    enrollment_id: int | None = None  # ← ADD THIS
     enrollment_timestamp: str | None = None
 
 
@@ -109,7 +110,9 @@ class EnrollmentWorkflow:
             await self._fetch_course_details(input.course_id, input.course_title)
 
             # Step 4: Initialize progress tracking
-            await self._initialize_progress(input.student_id, input.course_id)
+            await self._initialize_progress(
+                input.student_id, input.course_id, input.enrollment_id
+            )
 
             # Step 5: Send welcome email
             await self._send_welcome_email(input)
@@ -236,7 +239,9 @@ class EnrollmentWorkflow:
             )
             self.steps_completed.append(f"{step_name}_fallback")
 
-    async def _initialize_progress(self, student_id: int, course_id: int) -> None:
+    async def _initialize_progress(
+        self, student_id: int, course_id: int, enrollment_id: int | None
+    ) -> None:
         """Step 4: Initialize progress tracking."""
         step_name = "initialize_progress"
         workflow.logger.info("Step: %s", step_name)
@@ -246,6 +251,7 @@ class EnrollmentWorkflow:
             InitializeProgressInput(
                 student_id=student_id,
                 course_id=course_id,
+                enrollment_id=enrollment_id,
             ),
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=DEFAULT_RETRY_POLICY,

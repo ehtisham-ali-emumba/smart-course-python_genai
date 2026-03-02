@@ -6,10 +6,11 @@ from pydantic import BaseModel
 class EnrollmentCreatedPayload(BaseModel):
     """Payload for enrollment.created event."""
 
+    enrollment_id: int  # ← ADD THIS
     student_id: int
     course_id: int
     course_title: str
-    email: str
+    email: str = ""
 
 
 class EnrollmentCompletedPayload(BaseModel):

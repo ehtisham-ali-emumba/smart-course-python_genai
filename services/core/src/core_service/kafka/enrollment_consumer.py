@@ -47,6 +47,7 @@ async def handle_enrollment_event(topic: str, envelope: EventEnvelope) -> None:
     payload = envelope.payload
     student_id = payload.get("student_id")
     course_id = payload.get("course_id")
+    enrollment_id = payload.get("enrollment_id")  # ← ADD
     course_title = payload.get("course_title", f"Course {course_id}")
     student_email = payload.get("email", "")
 
@@ -70,6 +71,7 @@ async def handle_enrollment_event(topic: str, envelope: EventEnvelope) -> None:
             course_id=course_id,
             course_title=course_title,
             student_email=student_email,
+            enrollment_id=enrollment_id,  # ← ADD
         )
 
         # Start workflow (non-blocking - workflow runs asynchronously)

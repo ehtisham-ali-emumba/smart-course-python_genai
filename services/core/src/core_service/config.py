@@ -22,17 +22,16 @@ class CoreSettings(BaseSettings):
     TEMPORAL_NAMESPACE: str
     TEMPORAL_TASK_QUEUE: str
 
+    # Internal service URLs
+    USER_SERVICE_URL: str = "http://user-service:8001"
+    COURSE_SERVICE_URL: str = "http://course-service:8002"
+    NOTIFICATION_SERVICE_URL: str = "http://notification-service:8005"
+    HTTP_TIMEOUT_SECONDS: float = 30.0
+
     # Mock activity settings (for testing/development)
     MOCK_ACTIVITY_DELAY_MIN: float
     MOCK_ACTIVITY_DELAY_MAX: float
     MOCK_ACTIVITY_FAIL_RATE: float
-
-    # NOTE: Service URLs not needed in mock mode
-    # Uncomment when switching to real HTTP activity calls:
-    # USER_SERVICE_URL: str = "http://user-service:8001"
-    # COURSE_SERVICE_URL: str = "http://course-service:8002"
-    # NOTIFICATION_SERVICE_URL: str = "http://notification-service:8005"
-    # HTTP_TIMEOUT_SECONDS: float = 30.0
 
     model_config = SettingsConfigDict(
         env_file=".env", env_prefix="", case_sensitive=True

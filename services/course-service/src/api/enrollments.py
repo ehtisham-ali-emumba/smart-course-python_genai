@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_authenticated_user, get_current_user_id, get_event_producer
+from api.dependencies import (
+    get_authenticated_user,
+    get_current_user_id,
+    get_event_producer,
+    require_instructor,
+)
 from core.database import get_db
 from shared.kafka.producer import EventProducer
 from shared.kafka.topics import Topics
@@ -46,6 +51,7 @@ async def enroll(
             Topics.ENROLLMENT,
             "enrollment.created",
             EnrollmentCreatedPayload(
+                enrollment_id=enrollment.id,  # ← ADD THIS
                 student_id=enrollment.student_id,
                 course_id=enrollment.course_id,
                 course_title=course_title,
@@ -157,3 +163,20 @@ async def undrop_enrollment(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/course/{course_id}/active-students")
+async def list_active_students_for_course(
+    course_id: int,
+    instructor_id: int = Depends(require_instructor),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Internal endpoint: return active student_ids enrolled in a course.
+    Used by core-service CoursePublishWorkflow to notify enrolled students.
+    """
+    service = EnrollmentService(db)
+    # EnrollmentRepository.get_by_course() already exists
+    enrollments = await service.enrollment_repo.get_by_course(course_id)
+    active_ids = [e.student_id for e in enrollments if e.status == "active"]
+    return {"course_id": course_id, "student_ids": active_ids, "count": len(active_ids)}
