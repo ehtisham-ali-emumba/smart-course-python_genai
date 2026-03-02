@@ -9,7 +9,14 @@ from core.database import engine
 from core.mongodb import close_mongodb, connect_mongodb
 from core.redis import close_redis, connect_redis, get_redis
 from shared.kafka.producer import EventProducer
-from models import Certificate, Course, Enrollment, Progress  # noqa: F401
+from models import (  # noqa: F401
+    Certificate,
+    Course,
+    Enrollment,
+    Progress,
+    QuizAttempt,
+    UserAnswer,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

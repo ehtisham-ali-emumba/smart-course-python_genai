@@ -17,6 +17,18 @@ async def connect_mongodb() -> None:
     await _database.course_content.create_index("course_id", unique=True)
     await _database.course_content.create_index("updated_at")
 
+    await _database.module_quizzes.create_index(
+        [("course_id", 1), ("module_id", 1)],
+        unique=True,
+    )
+    await _database.module_quizzes.create_index("course_id")
+
+    await _database.module_summaries.create_index(
+        [("course_id", 1), ("module_id", 1)],
+        unique=True,
+    )
+    await _database.module_summaries.create_index("course_id")
+
 
 async def close_mongodb() -> None:
     """Close MongoDB connection. Call on app shutdown."""

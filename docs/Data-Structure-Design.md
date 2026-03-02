@@ -4,8 +4,22 @@
 
 This document outlines the hybrid data architecture for SmartCourse, leveraging:
 
-- **MongoDB**: Flexible, content-rich documents (course content, quizzes, summaries)
-- **PostgreSQL**: Structured, relational data (user responses, progress, attempts)
+- **MongoDB**: Flexible, content-rich documents (course content, module quizzes, module summaries)
+- **PostgreSQL**: Structured, relational data (enrollments, lesson progress, quiz attempts, user answers)
+
+---
+
+## Core Hierarchy
+
+```
+Course (PostgreSQL: courses)
+  └── Module (MongoDB: course_content → modules[])
+        ├── Lessons (MongoDB: course_content → modules[].lessons[])
+        ├── Quiz (MongoDB: module_quizzes) — one quiz per module
+        └── Summary (MongoDB: module_summaries) — one summary per module
+```
+
+**Key rule:** Quizzes and summaries are scoped to **modules**, not individual lessons. Each module can have at most one quiz and one summary. Both can be AI-generated or instructor-authored.
 
 ---
 
@@ -13,7 +27,7 @@ This document outlines the hybrid data architecture for SmartCourse, leveraging:
 
 ### 1. `course_content` Collection (Existing)
 
-Stores the hierarchical course structure with modules and lessons.
+Stores the hierarchical course structure: modules and their lessons. No changes to this collection.
 
 ```json
 {
@@ -49,9 +63,9 @@ Stores the hierarchical course structure with modules and lessons.
         },
         {
           "lesson_id": "les_9k1m2n",
-          "title": "Variables Quiz",
-          "type": "quiz",
-          "content": "quiz_6b8c9d1e2f3a",  // Reference to quiz_id in quizzes collection
+          "title": "Control Flow",
+          "type": "text",
+          "content": "...",
           "duration_minutes": 10,
           "order": 2,
           "is_preview": false,
@@ -67,67 +81,52 @@ Stores the hierarchical course structure with modules and lessons.
     "total_duration_hours": 12.5,
     "tags": ["python", "programming", "beginner"]
   },
-  "created_at": ISODate("2026-01-15T10:00:00Z"),
-  "updated_at": ISODate("2026-02-20T14:30:00Z")
+  "created_at": "ISODate(2026-01-15T10:00:00Z)",
+  "updated_at": "ISODate(2026-02-20T14:30:00Z)"
 }
 ```
 
 **Indexes:**
-
 - `course_id` (unique)
 - `updated_at`
 
 ---
 
-### 2. `quizzes` Collection (NEW)
+### 2. `module_quizzes` Collection (NEW)
 
-Stores detailed quiz structure with questions, options, and correct answers.
+Stores quiz content per module. One document per module. Can be AI-generated or manually authored by the instructor.
 
 ```json
 {
   "_id": ObjectId("6b8c9d1e2f3a4567890abcde"),
-  "quiz_id": "quiz_6b8c9d1e2f3a",
   "course_id": 1,
-  "lesson_id": "les_9k1m2n",  // Links back to lesson in course_content
-  "title": "Python Variables Quiz",
-  "description": "Test your understanding of Python variables and data types",
-  "type": "graded",  // graded, practice, self-assessment
-  "passing_score": 70,
-  "time_limit_minutes": 15,
-  "max_attempts": 3,
-  "shuffle_questions": true,
-  "shuffle_options": true,
-  "show_correct_answers_after": "completion",  // completion, all_attempts_exhausted, never
+  "module_id": "mod_6a8b9c",
+
+  "title": "Introduction to Python — Module Quiz",
+  "description": "Test your understanding of Python fundamentals covered in this module",
+
+  "settings": {
+    "passing_score": 70,
+    "time_limit_minutes": 20,
+    "max_attempts": 3,
+    "shuffle_questions": true,
+    "shuffle_options": true,
+    "show_correct_answers_after": "completion"
+  },
+
   "questions": [
     {
       "question_id": "q_1a2b3c",
       "order": 1,
       "question_text": "What is the correct way to declare a variable in Python?",
-      "question_type": "multiple_choice",  // multiple_choice, multiple_select, true_false, short_answer
-      "points": 10,
+      "question_type": "multiple_choice",
       "options": [
-        {
-          "option_id": "opt_x1y2z3",
-          "text": "x = 5",
-          "is_correct": true
-        },
-        {
-          "option_id": "opt_a4b5c6",
-          "text": "int x = 5",
-          "is_correct": false
-        },
-        {
-          "option_id": "opt_d7e8f9",
-          "text": "var x = 5",
-          "is_correct": false
-        },
-        {
-          "option_id": "opt_g0h1i2",
-          "text": "declare x = 5",
-          "is_correct": false
-        }
+        { "option_id": "opt_x1y2z3", "text": "x = 5",          "is_correct": true  },
+        { "option_id": "opt_a4b5c6", "text": "int x = 5",      "is_correct": false },
+        { "option_id": "opt_d7e8f9", "text": "var x = 5",      "is_correct": false },
+        { "option_id": "opt_g0h1i2", "text": "declare x = 5",  "is_correct": false }
       ],
-      "explanation": "Python uses dynamic typing, so you don't need to declare the variable type.",
+      "explanation": "Python uses dynamic typing — no type declaration needed.",
       "hint": "Python doesn't require type declarations"
     },
     {
@@ -135,30 +134,13 @@ Stores detailed quiz structure with questions, options, and correct answers.
       "order": 2,
       "question_text": "Which of the following are valid Python data types? (Select all that apply)",
       "question_type": "multiple_select",
-      "points": 15,
       "options": [
-        {
-          "option_id": "opt_j3k4l5",
-          "text": "int",
-          "is_correct": true
-        },
-        {
-          "option_id": "opt_m6n7o8",
-          "text": "float",
-          "is_correct": true
-        },
-        {
-          "option_id": "opt_p9q0r1",
-          "text": "string",
-          "is_correct": false
-        },
-        {
-          "option_id": "opt_s2t3u4",
-          "text": "str",
-          "is_correct": true
-        }
+        { "option_id": "opt_j3k4l5", "text": "int",    "is_correct": true  },
+        { "option_id": "opt_m6n7o8", "text": "float",  "is_correct": true  },
+        { "option_id": "opt_p9q0r1", "text": "string", "is_correct": false },
+        { "option_id": "opt_s2t3u4", "text": "str",    "is_correct": true  }
       ],
-      "explanation": "The correct types are int, float, and str (not 'string').",
+      "explanation": "Correct types: int, float, and str (not 'string').",
       "hint": "Python uses abbreviated names for some types"
     },
     {
@@ -166,105 +148,129 @@ Stores detailed quiz structure with questions, options, and correct answers.
       "order": 3,
       "question_text": "What will be the output of: print(type(5.0))?",
       "question_type": "short_answer",
-      "points": 10,
-      "correct_answers": [
-        "<class 'float'>",
-        "float",
-        "<type 'float'>"
-      ],
+      "correct_answers": ["<class 'float'>", "float"],
       "case_sensitive": false,
-      "explanation": "5.0 is a floating-point number, so type() returns <class 'float'>",
+      "explanation": "5.0 is a float, so type() returns <class 'float'>",
       "hint": "Consider the decimal point"
+    },
+    {
+      "question_id": "q_4j5k6l",
+      "order": 4,
+      "question_text": "Is Python a statically typed language?",
+      "question_type": "true_false",
+      "options": [
+        { "option_id": "opt_true",  "text": "True",  "is_correct": false },
+        { "option_id": "opt_false", "text": "False", "is_correct": true  }
+      ],
+      "explanation": "Python is dynamically typed — types are resolved at runtime.",
+      "hint": "Think about type declarations"
     }
   ],
-  "total_points": 35,
-  "metadata": {
-    "created_by": 123,  // instructor_id
-    "difficulty": "beginner",
-    "estimated_time_minutes": 10,
-    "tags": ["python", "variables", "data-types"]
+
+  "authorship": {
+    "source": "ai_generated",        // "ai_generated" | "manual" | "ai_edited"
+    "generated_by_user_id": 123,     // instructor who triggered generation
+    "ai_model": "gpt-4o-mini",       // null if manual
+    "source_lesson_ids": ["les_3d4e5f", "les_9k1m2n"],  // lessons used as input for AI
+    "version": 2,
+    "last_edited_by": 123,
+    "last_edited_at": "ISODate(2026-02-15T11:20:00Z)"
   },
-  "created_at": ISODate("2026-01-20T09:00:00Z"),
-  "updated_at": ISODate("2026-02-15T11:20:00Z"),
-  "is_active": true
+
+  "is_published": true,
+  "is_active": true,
+  "created_at": "ISODate(2026-01-20T09:00:00Z)",
+  "updated_at": "ISODate(2026-02-15T11:20:00Z)"
 }
 ```
 
 **Indexes:**
-
-- `quiz_id` (unique)
+- `(course_id, module_id)` (unique compound — one quiz per module)
 - `course_id`
-- `lesson_id`
 - `created_at`
+
+**Question Types:**
+
+| Type              | `options` field  | `correct_answers` field | Notes                              |
+|-------------------|------------------|-------------------------|------------------------------------|
+| `multiple_choice` | Required         | —                       | Single correct option (`is_correct: true`) |
+| `multiple_select` | Required         | —                       | Multiple options can be correct    |
+| `true_false`      | Required (2)     | —                       | `opt_true` / `opt_false` option IDs |
+| `short_answer`    | —                | Required (array)        | Case-insensitive match by default  |
+
+**Scoring:** Score is calculated as `(correct_answers / total_questions) * 100`. No per-question weighting.
 
 ---
 
-### 3. `summaries` Collection (NEW)
+### 3. `module_summaries` Collection (NEW)
 
-Stores AI-generated summaries for modules, lessons, or entire courses.
+Stores a module-level summary. One document per module. AI-generated or manually written by the instructor.
 
 ```json
 {
   "_id": ObjectId("507f1f77bcf86cd799439099"),
-  "summary_id": "sum_4g5h6i7j8k",
   "course_id": 1,
-  "content_type": "module",  // course, module, lesson
-  "content_id": "mod_6a8b9c",  // Reference to module_id, lesson_id, or course_id
-  "summary_text": "This module introduces the fundamental concepts of Python programming...",
-  "summary_html": "<h2>Key Concepts</h2><p>This module introduces...</p>",
-  "key_points": [
-    "Variables don't require type declaration",
-    "Python supports multiple numeric types: int, float, complex",
-    "Strings can use single or double quotes",
-    "Type conversion functions: int(), float(), str()"
-  ],
-  "learning_objectives": [
-    "Understand how to declare and use variables",
-    "Identify different Python data types",
-    "Perform type conversion operations"
-  ],
-  "glossary": [
-    {
-      "term": "Variable",
-      "definition": "A named storage location in memory that holds a value"
-    },
-    {
-      "term": "Data Type",
-      "definition": "The classification of data that tells the compiler or interpreter how the data should be used"
+  "module_id": "mod_6a8b9c",
+
+  "title": "Introduction to Python — Module Summary",
+
+  "content": {
+    "summary_text": "This module introduces the fundamental concepts of Python programming, covering variables, data types, and control flow.",
+    "summary_html": "<h2>Key Concepts</h2><p>This module introduces...</p>",
+    "key_points": [
+      "Variables don't require type declarations in Python",
+      "Python supports multiple numeric types: int, float, complex",
+      "Strings can use single or double quotes",
+      "Type conversion functions: int(), float(), str()"
+    ],
+    "learning_objectives": [
+      "Declare and use variables",
+      "Identify different Python data types",
+      "Perform basic type conversions"
+    ],
+    "glossary": [
+      {
+        "term": "Variable",
+        "definition": "A named storage location in memory that holds a value"
+      },
+      {
+        "term": "Dynamic Typing",
+        "definition": "Type resolution at runtime — no type declarations needed"
+      }
+    ],
+    "difficulty_assessment": {
+      "level": "beginner",
+      "estimated_read_minutes": 5
     }
-  ],
-  "difficulty_assessment": {
-    "level": "beginner",
-    "estimated_hours": 2.5,
-    "prerequisites": []
   },
-  "generated_by": "ai-service",
-  "model_version": "gpt-4-turbo",
-  "metadata": {
-    "word_count": 450,
-    "reading_time_minutes": 5,
-    "tags": ["python", "fundamentals", "variables"]
+
+  "authorship": {
+    "source": "ai_generated",        // "ai_generated" | "manual" | "ai_edited"
+    "generated_by_user_id": 123,
+    "ai_model": "gpt-4o-mini",       // null if manual
+    "source_lesson_ids": ["les_3d4e5f", "les_9k1m2n"],
+    "version": 1,
+    "last_edited_by": null,
+    "last_edited_at": null
   },
-  "created_at": ISODate("2026-01-21T10:00:00Z"),
-  "updated_at": ISODate("2026-02-10T14:00:00Z"),
-  "is_active": true
+
+  "is_published": true,
+  "is_active": true,
+  "created_at": "ISODate(2026-01-21T10:00:00Z)",
+  "updated_at": "ISODate(2026-02-10T14:00:00Z)"
 }
 ```
 
 **Indexes:**
-
-- `summary_id` (unique)
+- `(course_id, module_id)` (unique compound — one summary per module)
 - `course_id`
-- `content_type, content_id` (compound)
 - `created_at`
 
 ---
 
 ## PostgreSQL Tables
 
-### 1. `courses` Table (Existing)
-
-Stores course metadata.
+### 1. `courses` Table (Existing — No Changes)
 
 ```sql
 CREATE TABLE courses (
@@ -294,30 +300,18 @@ CREATE TABLE courses (
 CREATE INDEX idx_courses_slug ON courses(slug);
 CREATE INDEX idx_courses_instructor_id ON courses(instructor_id);
 CREATE INDEX idx_courses_status ON courses(status);
-CREATE INDEX idx_courses_published_at ON courses(published_at);
-```
-
-**Example Data:**
-
-```sql
-id  | title             | instructor_id | status    | price
-----|-------------------|---------------|-----------|-------
-1   | Python Mastery    | 123           | published | 99.99
-2   | Web Development   | 456           | published | 149.99
 ```
 
 ---
 
-### 2. `enrollments` Table (Existing)
-
-Tracks which users are enrolled in which courses.
+### 2. `enrollments` Table (Existing — No Changes)
 
 ```sql
 CREATE TABLE enrollments (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-    status VARCHAR(50) DEFAULT 'active' NOT NULL,
+    status VARCHAR(50) DEFAULT 'active' NOT NULL,   -- active, completed, dropped
     progress_percentage NUMERIC(5,2) DEFAULT 0 NOT NULL,
     enrolled_at TIMESTAMP DEFAULT NOW() NOT NULL,
     completed_at TIMESTAMP,
@@ -332,29 +326,19 @@ CREATE INDEX idx_enrollments_course_id ON enrollments(course_id);
 CREATE INDEX idx_enrollments_status ON enrollments(status);
 ```
 
-**Example Data:**
-
-```sql
-id  | user_id | course_id | status    | progress_percentage | enrolled_at
-----|---------|-----------|-----------|---------------------|------------
-1   | 789     | 1         | active    | 35.50               | 2026-02-01
-2   | 789     | 2         | active    | 12.00               | 2026-02-15
-3   | 890     | 1         | completed | 100.00              | 2026-01-10
-```
-
 ---
 
-### 3. `progress` Table (Existing - Enhanced)
+### 3. `progress` Table (Existing — Scoped to Completion Tracking Only)
 
-Tracks granular progress for each content item (lessons, quizzes, etc.).
+Tracks **completion state** of each content item per enrollment. This table is intentionally lightweight — it only records whether an item was completed and the percentage watched/read. Detailed quiz performance data lives in `quiz_attempts` and `user_answers`.
 
 ```sql
 CREATE TABLE progress (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
-    item_type VARCHAR(20) NOT NULL,  -- 'video', 'text', 'quiz', 'assignment'
-    item_id VARCHAR(50) NOT NULL,    -- References MongoDB lesson_id or quiz_id
+    item_type VARCHAR(30) NOT NULL,   -- 'lesson', 'module_quiz', 'module_summary'
+    item_id VARCHAR(50) NOT NULL,     -- lesson_id (MongoDB), module_id (for quiz/summary)
     progress_percentage NUMERIC(5,2) DEFAULT 0 NOT NULL,
     completed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -366,79 +350,72 @@ CREATE INDEX idx_progress_user_enrollment ON progress(user_id, enrollment_id);
 CREATE INDEX idx_progress_item ON progress(item_type, item_id);
 ```
 
-**Example Data:**
+**item_type values:**
 
-```sql
-id  | user_id | enrollment_id | item_type | item_id         | progress_percentage | completed_at
-----|---------|---------------|-----------|-----------------|---------------------|-------------
-1   | 789     | 1             | video     | les_3d4e5f      | 100.00              | 2026-02-05
-2   | 789     | 1             | quiz      | les_9k1m2n      | 100.00              | 2026-02-06
-3   | 789     | 1             | video     | les_4f5g6h      | 45.00               | NULL
-```
+| `item_type`      | `item_id` references              | Completed when                          |
+|------------------|-----------------------------------|-----------------------------------------|
+| `lesson`         | MongoDB `lesson_id`               | Student finishes watching/reading       |
+| `module_quiz`    | MongoDB `module_id`               | Student submits quiz attempt (pass/fail)|
+| `module_summary` | MongoDB `module_id`               | Student marks summary as read           |
+
+**Note:** `module_quiz` progress is marked complete once the student submits any attempt (regardless of pass/fail). Pass/fail status lives in `quiz_attempts`.
 
 ---
 
 ### 4. `quiz_attempts` Table (NEW)
 
-Tracks each attempt a user makes on a quiz.
+One row per quiz attempt. Tracks outcome, score, and timing. References the module-level quiz in MongoDB.
 
 ```sql
 CREATE TABLE quiz_attempts (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
-    quiz_id VARCHAR(50) NOT NULL,  -- References MongoDB quiz_id
-    lesson_id VARCHAR(50) NOT NULL,  -- References MongoDB lesson_id
-    course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    module_id VARCHAR(50) NOT NULL,     -- References MongoDB module_id
     attempt_number INTEGER NOT NULL,
     status VARCHAR(20) DEFAULT 'in_progress' NOT NULL,  -- in_progress, submitted, graded
-    score NUMERIC(5,2),  -- Percentage score (0-100)
-    points_earned NUMERIC(10,2),
-    total_points NUMERIC(10,2),
-    time_spent_seconds INTEGER,
+    score NUMERIC(5,2),                 -- Percentage 0–100 (correct / total questions * 100)
     passed BOOLEAN,
+    time_spent_seconds INTEGER,
     started_at TIMESTAMP DEFAULT NOW() NOT NULL,
     submitted_at TIMESTAMP,
     graded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    CONSTRAINT uq_quiz_attempts UNIQUE(user_id, quiz_id, attempt_number)
+    CONSTRAINT uq_quiz_attempts UNIQUE(user_id, enrollment_id, module_id, attempt_number)
 );
 
 CREATE INDEX idx_quiz_attempts_user_id ON quiz_attempts(user_id);
 CREATE INDEX idx_quiz_attempts_enrollment_id ON quiz_attempts(enrollment_id);
-CREATE INDEX idx_quiz_attempts_quiz_id ON quiz_attempts(quiz_id);
-CREATE INDEX idx_quiz_attempts_course_id ON quiz_attempts(course_id);
+CREATE INDEX idx_quiz_attempts_module_id ON quiz_attempts(module_id);
 CREATE INDEX idx_quiz_attempts_status ON quiz_attempts(status);
 ```
 
 **Example Data:**
 
-```sql
-id  | user_id | quiz_id              | attempt_number | status    | score | points_earned | total_points | passed | submitted_at
-----|---------|----------------------|----------------|-----------|-------|---------------|--------------|--------|-------------
-1   | 789     | quiz_6b8c9d1e2f3a    | 1              | graded    | 71.43 | 25.00         | 35.00        | true   | 2026-02-06
-2   | 789     | quiz_6b8c9d1e2f3a    | 2              | graded    | 85.71 | 30.00         | 35.00        | true   | 2026-02-07
-3   | 890     | quiz_6b8c9d1e2f3a    | 1              | graded    | 57.14 | 20.00         | 35.00        | false  | 2026-02-08
+```
+id | user_id | module_id  | attempt_number | status | score | passed
+---|---------|------------|----------------|--------|-------|-------
+1  | 789     | mod_6a8b9c | 1              | graded | 50.00 | false
+2  | 789     | mod_6a8b9c | 2              | graded | 75.00 | true
+3  | 890     | mod_6a8b9c | 1              | graded | 75.00 | true
 ```
 
 ---
 
 ### 5. `user_answers` Table (NEW)
 
-Stores individual answers for each question in a quiz attempt.
+Stores each individual answer within a quiz attempt. Keyed to a `quiz_attempt_id`.
 
 ```sql
 CREATE TABLE user_answers (
     id SERIAL PRIMARY KEY,
     quiz_attempt_id INTEGER NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL,
-    question_id VARCHAR(50) NOT NULL,  -- References MongoDB question_id
-    question_type VARCHAR(20) NOT NULL,
-    user_response JSONB NOT NULL,  -- Flexible storage for different answer types
+    question_id VARCHAR(50) NOT NULL,   -- References MongoDB question_id
+    question_type VARCHAR(20) NOT NULL, -- multiple_choice, multiple_select, true_false, short_answer
+    user_response JSONB NOT NULL,       -- Flexible per question type (see below)
     is_correct BOOLEAN,
-    points_earned NUMERIC(10,2),
-    points_possible NUMERIC(10,2),
     time_spent_seconds INTEGER,
     answered_at TIMESTAMP DEFAULT NOW() NOT NULL,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -448,301 +425,735 @@ CREATE TABLE user_answers (
 CREATE INDEX idx_user_answers_attempt_id ON user_answers(quiz_attempt_id);
 CREATE INDEX idx_user_answers_user_id ON user_answers(user_id);
 CREATE INDEX idx_user_answers_question_id ON user_answers(question_id);
-CREATE INDEX idx_user_answers_user_response ON user_answers USING gin(user_response);
+CREATE INDEX idx_user_answers_response ON user_answers USING gin(user_response);
 ```
 
-**Example Data with Different Question Types:**
-
-```sql
--- Multiple Choice Answer
-id  | quiz_attempt_id | user_id | question_id | question_type    | user_response                           | is_correct | points_earned | points_possible
-----|-----------------|---------|-------------|------------------|-----------------------------------------|------------|---------------|----------------
-1   | 1               | 789     | q_1a2b3c    | multiple_choice  | {"selected_option": "opt_x1y2z3"}       | true       | 10.00         | 10.00
-
--- Multiple Select Answer
-2   | 1               | 789     | q_2d3e4f    | multiple_select  | {"selected_options": ["opt_j3k4l5", "opt_m6n7o8", "opt_s2t3u4"]} | true | 15.00 | 15.00
-
--- Short Answer
-3   | 1               | 789     | q_3g4h5i    | short_answer     | {"text": "float"}                       | true       | 10.00         | 10.00
-
--- Wrong Answer Example
-4   | 3               | 890     | q_1a2b3c    | multiple_choice  | {"selected_option": "opt_a4b5c6"}       | false      | 0.00          | 10.00
-```
-
-**user_response JSONB Structure Examples:**
+**`user_response` JSONB structure by question type:**
 
 ```json
-// Multiple Choice
-{
-  "selected_option": "opt_x1y2z3"
-}
+// multiple_choice
+{ "selected_option": "opt_x1y2z3" }
 
-// Multiple Select
-{
-  "selected_options": ["opt_j3k4l5", "opt_m6n7o8"]
-}
+// multiple_select
+{ "selected_options": ["opt_j3k4l5", "opt_m6n7o8"] }
 
-// True/False
-{
-  "selected_option": "opt_true"
-}
+// true_false
+{ "selected_option": "opt_false" }
 
-// Short Answer
-{
-  "text": "float"
-}
-
-// Essay/Long Answer
-{
-  "text": "Python is a high-level programming language...",
-  "word_count": 150
-}
+// short_answer
+{ "text": "float" }
 ```
 
 ---
 
 ## Data Relationships
 
-### Content Flow
+### Content Hierarchy
 
 ```
 PostgreSQL: courses (id=1)
-    ↓ (course_id reference)
-MongoDB: course_content (course_id=1)
-    ↓ (contains modules and lessons)
-    lessons → lesson_id="les_9k1m2n" (type="quiz")
-    ↓ (content field references quiz_id)
-MongoDB: quizzes (quiz_id="quiz_6b8c9d1e2f3a")
+    │
+    └─► MongoDB: course_content (course_id=1)
+              │
+              └─► modules[module_id="mod_6a8b9c"]
+                        │
+                        ├─► lessons[] — video, text, pdf, etc.
+                        │
+                        ├─► MongoDB: module_quizzes (course_id=1, module_id="mod_6a8b9c")
+                        │
+                        └─► MongoDB: module_summaries (course_id=1, module_id="mod_6a8b9c")
 ```
 
-### User Progress Flow
+### Student Progress Flow
 
 ```
 PostgreSQL: enrollments (user_id=789, course_id=1)
-    ↓
-PostgreSQL: progress (tracks each lesson/quiz completion)
-    ↓ (for quiz items)
-PostgreSQL: quiz_attempts (tracks each quiz attempt)
-    ↓
-PostgreSQL: user_answers (stores individual question responses)
+    │
+    ├─► PostgreSQL: progress
+    │       item_type='lesson',        item_id='les_3d4e5f'  → lesson completion
+    │       item_type='module_quiz',   item_id='mod_6a8b9c'  → quiz completion flag
+    │       item_type='module_summary',item_id='mod_6a8b9c'  → summary read flag
+    │
+    └─► PostgreSQL: quiz_attempts (user_id=789, module_id="mod_6a8b9c")
+              │
+              └─► PostgreSQL: user_answers (per question, per attempt)
 ```
 
 ---
 
 ## Key Design Decisions
 
-### Why MongoDB for Content?
+### Why Quiz and Summary per Module (not per Lesson)?
 
-- **Flexible schema**: Course content structure can evolve without migrations
-- **Nested documents**: Modules → Lessons → Resources naturally nest
-- **Rich content**: Quizzes with complex question types fit well in documents
-- **Version control**: Easy to version entire course content as documents
+- A module represents a cohesive learning unit; testing or summarising at that level is more meaningful pedagogically.
+- Instructors review multiple lessons together before generating content — a module-level scope matches that workflow.
+- Simpler data model: one quiz document and one summary document per module instead of tracking multiple per-lesson items.
 
-### Why PostgreSQL for User Data?
+### Why MongoDB for Quiz and Summary Content?
 
-- **ACID compliance**: Critical for enrollment and scoring transactions
-- **Strong consistency**: User progress must be accurate
-- **Relational integrity**: Foreign keys ensure data consistency
-- **Analytics**: Easier to query aggregated user performance data
-- **Indexing**: Efficient queries for user progress dashboards
+- Quiz questions have varying structure (multiple choice vs. short answer vs. true/false) — a flexible document model is cleaner than wide nullable columns.
+- Summary content includes rich fields (HTML, glossary, key points) that are easier to evolve without schema migrations.
+- Content lives alongside `course_content`, keeping all instructional material in one store.
+
+### Why PostgreSQL for Quiz Attempts and Answers?
+
+- ACID compliance is critical: a submitted attempt with its answers must be written atomically.
+- Relational integrity: `user_answers` always belongs to a valid `quiz_attempts` row.
+- Analytics: aggregating scores, pass rates, and per-question difficulty is straightforward with SQL.
+
+### No Per-Question Points Weighting
+
+Score is a simple percentage: `(correct_answers / total_questions) * 100`. All questions count equally. This keeps the grading logic simple and the schema lean.
 
 ---
 
 ## Usage Examples
 
-### 1. Student Takes a Quiz
-
-**Step 1:** Fetch quiz from MongoDB
+### Instructor Creates a Quiz
 
 ```python
-quiz = await mongodb.quizzes.find_one({"quiz_id": "quiz_6b8c9d1e2f3a"})
+# AI-generated path: fetch lessons, call LLM, upsert into MongoDB
+quiz_doc = {
+    "course_id": 1, "module_id": "mod_6a8b9c",
+    "title": "...", "description": "...",
+    "settings": {"passing_score": 70, "max_attempts": 3, ...},
+    "questions": [...],  # built from LLM output or instructor input
+    "authorship": {
+        "source": "ai_generated", "generated_by_user_id": 123,
+        "ai_model": "gpt-4o-mini", "source_lesson_ids": [...], "version": 1
+    },
+    "is_published": False, "is_active": True
+}
+await mongodb.module_quizzes.replace_one(
+    {"course_id": 1, "module_id": "mod_6a8b9c"},
+    quiz_doc, upsert=True
+)
 ```
 
-**Step 2:** Create quiz attempt in PostgreSQL
+### Student Takes a Module Quiz
 
 ```python
+# 1. Fetch quiz from MongoDB
+quiz = await mongodb.module_quizzes.find_one({
+    "course_id": 1, "module_id": "mod_6a8b9c", "is_active": True
+})
+
+# 2. Enforce max_attempts
+attempt_count = await db.scalar(
+    select(func.count()).where(
+        QuizAttempt.user_id == 789,
+        QuizAttempt.enrollment_id == 1,
+        QuizAttempt.module_id == "mod_6a8b9c"
+    )
+)
+if attempt_count >= quiz["settings"]["max_attempts"]:
+    raise MaxAttemptsExceededError()
+
+# 3. Create attempt row
 attempt = QuizAttempt(
-    user_id=789,
-    enrollment_id=1,
-    quiz_id="quiz_6b8c9d1e2f3a",
-    lesson_id="les_9k1m2n",
-    course_id=1,
-    attempt_number=1,
-    total_points=35.00
+    user_id=789, enrollment_id=1,
+    module_id="mod_6a8b9c",
+    attempt_number=attempt_count + 1,
 )
 db.add(attempt)
-await db.commit()
-```
+await db.flush()  # get attempt.id
 
-**Step 3:** Save each answer
-
-```python
-for question in user_submitted_answers:
+# 4. Save each answer
+correct_count = 0
+total_questions = len(user_submitted_answers)
+for q in user_submitted_answers:
+    correct = grade_answer(q, quiz)
+    if correct:
+        correct_count += 1
     answer = UserAnswer(
-        quiz_attempt_id=attempt.id,
-        user_id=789,
-        question_id=question["question_id"],
-        question_type=question["type"],
-        user_response={"selected_option": question["answer"]},
-        is_correct=check_answer(question),
-        points_earned=calculate_points(question),
-        points_possible=question["points"]
+        quiz_attempt_id=attempt.id, user_id=789,
+        question_id=q["question_id"], question_type=q["type"],
+        user_response=q["response"],
+        is_correct=correct,
     )
     db.add(answer)
-```
 
-**Step 4:** Update quiz attempt with final score
-
-```python
+# 5. Finalise attempt
 attempt.status = "graded"
-attempt.score = (total_earned / total_possible) * 100
-attempt.points_earned = total_earned
-attempt.passed = attempt.score >= quiz["passing_score"]
+attempt.score = (correct_count / total_questions) * 100
+attempt.passed = attempt.score >= quiz["settings"]["passing_score"]
 attempt.submitted_at = datetime.utcnow()
+attempt.graded_at = datetime.utcnow()
 await db.commit()
-```
 
-**Step 5:** Update progress table
-
-```python
-progress = Progress(
-    user_id=789,
-    enrollment_id=1,
-    item_type="quiz",
-    item_id="les_9k1m2n",
-    progress_percentage=100.00,
+# 6. Mark quiz as complete in progress table (regardless of pass/fail)
+await upsert_progress(
+    user_id=789, enrollment_id=1,
+    item_type="module_quiz", item_id="mod_6a8b9c",
+    progress_percentage=100.0,
     completed_at=datetime.utcnow()
 )
-db.merge(progress)
-await db.commit()
 ```
 
-### 2. Display Student Dashboard
-
-**Fetch enrollment and progress:**
+### Student Reads a Module Summary
 
 ```python
-enrollment = await db.query(Enrollment).filter(
-    Enrollment.user_id == 789,
-    Enrollment.course_id == 1
-).first()
+# 1. Fetch summary from MongoDB
+summary = await mongodb.module_summaries.find_one({
+    "course_id": 1, "module_id": "mod_6a8b9c",
+    "is_active": True, "is_published": True
+})
 
-progress_items = await db.query(Progress).filter(
-    Progress.enrollment_id == enrollment.id
-).all()
-
-quiz_attempts = await db.query(QuizAttempt).filter(
-    QuizAttempt.enrollment_id == enrollment.id
-).order_by(QuizAttempt.started_at.desc()).all()
+# 2. Mark as read in progress table
+await upsert_progress(
+    user_id=789, enrollment_id=1,
+    item_type="module_summary", item_id="mod_6a8b9c",
+    progress_percentage=100.0,
+    completed_at=datetime.utcnow()
+)
 ```
 
-**Fetch course content from MongoDB:**
-
-```python
-course_content = await mongodb.course_content.find_one({"course_id": 1})
-```
-
-**Combine data for display:**
-
-```python
-dashboard = {
-    "course": course_content,
-    "enrollment": enrollment,
-    "completed_lessons": [p for p in progress_items if p.completed_at],
-    "quiz_scores": [
-        {
-            "quiz_id": a.quiz_id,
-            "best_score": max(attempts for same quiz),
-            "attempts": a.attempt_number
-        }
-        for a in quiz_attempts
-    ]
-}
-```
-
-### 3. Generate Analytics Report
-
-**Top performers query:**
+### Analytics: Quiz Performance per Module
 
 ```sql
+-- Pass rates per module quiz
 SELECT
-    u.username,
-    AVG(qa.score) as avg_quiz_score,
-    COUNT(DISTINCT qa.quiz_id) as quizzes_completed,
-    SUM(qa.time_spent_seconds) as total_time_seconds
+    qa.module_id,
+    COUNT(*) AS total_attempts,
+    COUNT(DISTINCT qa.user_id) AS unique_students,
+    ROUND(AVG(qa.score), 2) AS avg_score,
+    COUNT(CASE WHEN qa.passed THEN 1 END)::float / COUNT(*) * 100 AS pass_rate
 FROM quiz_attempts qa
-JOIN users u ON qa.user_id = u.id
-WHERE qa.course_id = 1
-  AND qa.status = 'graded'
-GROUP BY u.username
-ORDER BY avg_quiz_score DESC
-LIMIT 10;
-```
-
-**Quiz difficulty analysis:**
-
-```sql
-SELECT
-    quiz_id,
-    COUNT(*) as total_attempts,
-    AVG(score) as avg_score,
-    COUNT(CASE WHEN passed THEN 1 END) as pass_count,
-    COUNT(CASE WHEN passed THEN 1 END)::float / COUNT(*) * 100 as pass_rate
-FROM quiz_attempts
-WHERE status = 'graded'
-GROUP BY quiz_id
+JOIN enrollments e ON qa.enrollment_id = e.id
+WHERE e.course_id = 1 AND qa.status = 'graded'
+GROUP BY qa.module_id
 ORDER BY pass_rate ASC;
+
+-- Per-question difficulty (which questions students got wrong most)
+SELECT
+    ua.question_id,
+    COUNT(*) AS total_answers,
+    COUNT(CASE WHEN ua.is_correct THEN 1 END) AS correct_count,
+    ROUND(COUNT(CASE WHEN ua.is_correct THEN 1 END)::numeric / COUNT(*) * 100, 2) AS correct_rate
+FROM user_answers ua
+JOIN quiz_attempts qa ON ua.quiz_attempt_id = qa.id
+JOIN enrollments e ON qa.enrollment_id = e.id
+WHERE e.course_id = 1 AND qa.module_id = 'mod_6a8b9c'
+GROUP BY ua.question_id
+ORDER BY correct_rate ASC;
 ```
 
 ---
 
-## Migration Considerations
+## Migration Steps
 
-### Adding Quizzes and Summaries to MongoDB
-
-1. **Create indexes:**
+### MongoDB — Create Collections and Indexes
 
 ```python
-await mongodb.quizzes.create_index("quiz_id", unique=True)
-await mongodb.quizzes.create_index("course_id")
-await mongodb.quizzes.create_index("lesson_id")
+# module_quizzes
+await mongodb.module_quizzes.create_index(
+    [("course_id", 1), ("module_id", 1)], unique=True
+)
+await mongodb.module_quizzes.create_index("course_id")
 
-await mongodb.summaries.create_index("summary_id", unique=True)
-await mongodb.summaries.create_index("course_id")
-await mongodb.summaries.create_index([("content_type", 1), ("content_id", 1)])
+# module_summaries
+await mongodb.module_summaries.create_index(
+    [("course_id", 1), ("module_id", 1)], unique=True
+)
+await mongodb.module_summaries.create_index("course_id")
 ```
 
-2. **Create tables in PostgreSQL:**
+### PostgreSQL — Alembic Migration
 
 ```bash
-# Create migration
 alembic revision -m "add_quiz_attempts_and_user_answers"
-
-# Apply migration
 alembic upgrade head
 ```
 
 ---
 
-## Best Practices
+## Summary Table: What Lives Where
 
-1. **Always reference MongoDB IDs as strings** in PostgreSQL (quiz_id, lesson_id)
-2. **Use JSONB for flexible user_response** to handle different question types
-3. **Index foreign keys** for efficient joins
-4. **Denormalize sparingly**: Keep course_id in quiz_attempts for easier analytics
-5. **Validate MongoDB references** before creating PostgreSQL records
-6. **Use transactions** when updating related tables (quiz_attempts + user_answers)
-7. **Cache frequently accessed MongoDB documents** (Redis layer)
-8. **Archive old attempts** after a retention period to keep tables lean
+| Data                               | Store      | Collection / Table |
+|------------------------------------|------------|--------------------|
+| Course metadata                    | PostgreSQL | `courses`          |
+| Module + Lesson structure          | MongoDB    | `course_content`   |
+| Module quiz content                | MongoDB    | `module_quizzes`   |
+| Module summary content             | MongoDB    | `module_summaries` |
+| Enrollment                         | PostgreSQL | `enrollments`      |
+| Lesson / quiz / summary completion | PostgreSQL | `progress`         |
+| Quiz attempt outcome + score       | PostgreSQL | `quiz_attempts`    |
+| Per-question answers               | PostgreSQL | `user_answers`     |
 
 ---
 
-## Summary
+## API Endpoints: Quiz & Summary CRUD (Course Service)
 
-This hybrid architecture gives you:
+These endpoints live in the `course-service` under the existing `/courses` prefix. Auth is resolved via gateway-injected headers (`X-User-ID`, `X-User-Role`). Instructor-only routes use `require_instructor`; read routes use `get_current_user_id`.
 
-- **Flexibility**: MongoDB for evolving content structures
-- **Consistency**: PostgreSQL for transactional user data
-- **Performance**: Proper indexing on both sides
-- **Analytics**: Rich querying capabilities for insights
-- **Scalability**: Separate read/write patterns for content vs. user data
+---
+
+### Pydantic Schemas
+
+#### Quiz Schemas
+
+```python
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal, Optional
+from datetime import datetime
+
+# ── Options ──────────────────────────────────────────────────────────────────
+
+class QuizOptionSchema(BaseModel):
+    option_id: str
+    text: str
+    is_correct: bool
+
+# ── Questions ─────────────────────────────────────────────────────────────────
+
+class QuizQuestionCreate(BaseModel):
+    order: int = Field(..., ge=1)
+    question_text: str = Field(..., min_length=1)
+    question_type: Literal["multiple_choice", "multiple_select", "true_false", "short_answer"]
+    options: Optional[list[QuizOptionSchema]] = None          # required for all except short_answer
+    correct_answers: Optional[list[str]] = None               # required for short_answer
+    case_sensitive: Optional[bool] = False                    # short_answer only
+    explanation: Optional[str] = None
+    hint: Optional[str] = None
+
+class QuizQuestionResponse(QuizQuestionCreate):
+    question_id: str
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+class QuizSettingsSchema(BaseModel):
+    passing_score: int = Field(70, ge=0, le=100)
+    time_limit_minutes: Optional[int] = Field(None, ge=1)
+    max_attempts: int = Field(3, ge=1)
+    shuffle_questions: bool = True
+    shuffle_options: bool = True
+    show_correct_answers_after: Literal["completion", "passing", "never"] = "completion"
+
+# ── Authorship ────────────────────────────────────────────────────────────────
+
+class AuthorshipResponse(BaseModel):
+    source: Literal["ai_generated", "manual", "ai_edited"]
+    generated_by_user_id: Optional[int]
+    ai_model: Optional[str]
+    source_lesson_ids: list[str]
+    version: int
+    last_edited_by: Optional[int]
+    last_edited_at: Optional[datetime]
+
+# ── Quiz Request/Response ─────────────────────────────────────────────────────
+
+class QuizCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    description: Optional[str] = None
+    settings: QuizSettingsSchema = Field(default_factory=QuizSettingsSchema)
+    questions: list[QuizQuestionCreate] = Field(..., min_length=1)
+    is_published: bool = False
+
+class QuizUpdate(BaseModel):
+    """Full replacement — all fields required (PUT semantics)."""
+    title: str = Field(..., min_length=1, max_length=300)
+    description: Optional[str] = None
+    settings: QuizSettingsSchema
+    questions: list[QuizQuestionCreate] = Field(..., min_length=1)
+    is_published: bool
+
+class QuizPatch(BaseModel):
+    """Partial update — all fields optional (PATCH semantics)."""
+    title: Optional[str] = Field(None, min_length=1, max_length=300)
+    description: Optional[str] = None
+    settings: Optional[QuizSettingsSchema] = None
+    questions: Optional[list[QuizQuestionCreate]] = None
+    is_published: Optional[bool] = None
+
+class QuizPublishUpdate(BaseModel):
+    is_published: bool
+
+class QuizGenerateRequest(BaseModel):
+    """Trigger AI generation from selected lessons in the module."""
+    source_lesson_ids: list[str] = Field(..., min_length=1)
+    num_questions: int = Field(5, ge=1, le=20)
+    passing_score: int = Field(70, ge=0, le=100)
+    max_attempts: int = Field(3, ge=1)
+    time_limit_minutes: Optional[int] = Field(None, ge=1)
+
+class QuizResponse(BaseModel):
+    id: str                          # MongoDB _id as hex string
+    course_id: int
+    module_id: str
+    title: str
+    description: Optional[str]
+    settings: QuizSettingsSchema
+    questions: list[QuizQuestionResponse]
+    authorship: AuthorshipResponse
+    is_published: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+```
+
+---
+
+#### Summary Schemas
+
+```python
+# ── Content ───────────────────────────────────────────────────────────────────
+
+class GlossaryTermSchema(BaseModel):
+    term: str
+    definition: str
+
+class DifficultyAssessmentSchema(BaseModel):
+    level: Literal["beginner", "intermediate", "advanced"]
+    estimated_read_minutes: int = Field(..., ge=1)
+
+class SummaryContentCreate(BaseModel):
+    summary_text: str = Field(..., min_length=1)
+    summary_html: Optional[str] = None
+    key_points: list[str] = Field(default_factory=list)
+    learning_objectives: list[str] = Field(default_factory=list)
+    glossary: list[GlossaryTermSchema] = Field(default_factory=list)
+    difficulty_assessment: Optional[DifficultyAssessmentSchema] = None
+
+# ── Summary Request/Response ──────────────────────────────────────────────────
+
+class SummaryCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    content: SummaryContentCreate
+    is_published: bool = False
+
+class SummaryUpdate(BaseModel):
+    """Full replacement — all fields required (PUT semantics)."""
+    title: str = Field(..., min_length=1, max_length=300)
+    content: SummaryContentCreate
+    is_published: bool
+
+class SummaryPatch(BaseModel):
+    """Partial update — all fields optional (PATCH semantics)."""
+    title: Optional[str] = Field(None, min_length=1, max_length=300)
+    content: Optional[SummaryContentCreate] = None
+    is_published: Optional[bool] = None
+
+class SummaryPublishUpdate(BaseModel):
+    is_published: bool
+
+class SummaryGenerateRequest(BaseModel):
+    """Trigger AI generation from selected lessons in the module."""
+    source_lesson_ids: list[str] = Field(..., min_length=1)
+    include_glossary: bool = True
+    include_key_points: bool = True
+    include_learning_objectives: bool = True
+
+class SummaryResponse(BaseModel):
+    id: str                          # MongoDB _id as hex string
+    course_id: int
+    module_id: str
+    title: str
+    content: SummaryContentCreate
+    authorship: AuthorshipResponse
+    is_published: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+```
+
+---
+
+### Quiz Endpoints
+
+**Router prefix:** `courses/{course_id}/modules/{module_id}/quiz`
+**Tag:** `Module Quiz`
+**File:** `src/api/module_quiz.py`
+
+All quiz content lives in MongoDB (`module_quizzes`). The `course_id` is validated against PostgreSQL `courses` table to confirm the course exists and the instructor owns it.
+
+| Method   | Path                                                              | Auth       | Description                                        | Status   |
+|----------|-------------------------------------------------------------------|------------|----------------------------------------------------|----------|
+| `GET`    | `/courses/{course_id}/modules/{module_id}/quiz`                   | Any user   | Get the published quiz for a module                | 200 / 404|
+| `POST`   | `/courses/{course_id}/modules/{module_id}/quiz`                   | Instructor | Create a quiz manually (fails if one exists)       | 201 / 409|
+| `PUT`    | `/courses/{course_id}/modules/{module_id}/quiz`                   | Instructor | Replace the entire quiz document                   | 200 / 404|
+| `PATCH`  | `/courses/{course_id}/modules/{module_id}/quiz`                   | Instructor | Partial update (title, settings, questions, etc.)  | 200 / 404|
+| `DELETE` | `/courses/{course_id}/modules/{module_id}/quiz`                   | Instructor | Soft-delete quiz (`is_active = false`)             | 204 / 404|
+| `PATCH`  | `/courses/{course_id}/modules/{module_id}/quiz/publish`           | Instructor | Toggle `is_published`                              | 200 / 404|
+| `POST`   | `/courses/{course_id}/modules/{module_id}/quiz/generate`          | Instructor | AI-generate quiz from lesson content               | 201 / 409|
+
+#### Endpoint Details
+
+```python
+router = APIRouter(prefix="/courses/{course_id}/modules/{module_id}/quiz", tags=["Module Quiz"])
+
+@router.get("", response_model=QuizResponse)
+async def get_module_quiz(
+    course_id: int,
+    module_id: str,
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Returns the active, published quiz for a module.
+    Students see it before attempting; instructors see it for preview.
+    Raises 404 if no quiz exists or it is inactive.
+    """
+
+@router.post("", response_model=QuizResponse, status_code=201)
+async def create_module_quiz(
+    course_id: int,
+    module_id: str,
+    payload: QuizCreate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Manually create a quiz for a module.
+    Raises 404 if course/module not found.
+    Raises 403 if instructor does not own the course.
+    Raises 409 if a quiz already exists for this module (use PUT to replace).
+    """
+
+@router.put("", response_model=QuizResponse)
+async def replace_module_quiz(
+    course_id: int,
+    module_id: str,
+    payload: QuizUpdate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Full replacement of the quiz document (upserts if none exists).
+    Increments authorship.version. Sets source to 'manual'.
+    Raises 403 if instructor does not own the course.
+    """
+
+@router.patch("", response_model=QuizResponse)
+async def patch_module_quiz(
+    course_id: int,
+    module_id: str,
+    payload: QuizPatch,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Partial update — only provided fields are merged.
+    Raises 404 if quiz not found. Raises 403 if not owner.
+    """
+
+@router.delete("", status_code=204)
+async def delete_module_quiz(
+    course_id: int,
+    module_id: str,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Soft-delete: sets is_active = false on the quiz document.
+    Raises 404 if quiz not found. Raises 403 if not owner.
+    """
+
+@router.patch("/publish", response_model=QuizResponse)
+async def publish_module_quiz(
+    course_id: int,
+    module_id: str,
+    payload: QuizPublishUpdate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Toggle is_published. Unpublishing hides the quiz from students
+    but preserves existing quiz_attempts records.
+    Raises 404 if quiz not found. Raises 403 if not owner.
+    """
+
+@router.post("/generate", response_model=QuizResponse, status_code=201)
+async def generate_module_quiz(
+    course_id: int,
+    module_id: str,
+    payload: QuizGenerateRequest,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    AI-generate a quiz from the specified lessons (source_lesson_ids must
+    belong to this module). Calls the AI service internally. Upserts the
+    result into MongoDB with authorship.source = 'ai_generated'.
+    Raises 404 if course/module/lessons not found.
+    Raises 403 if not owner.
+    """
+```
+
+#### Error Responses
+
+| Code | Trigger                                                              |
+|------|----------------------------------------------------------------------|
+| 401  | Missing `X-User-ID` header                                           |
+| 403  | Instructor does not own the course                                   |
+| 404  | Course, module, or quiz not found / inactive                         |
+| 409  | `POST /quiz` called when quiz already exists for this module         |
+| 422  | Pydantic validation failure (e.g., `short_answer` without `correct_answers`) |
+
+---
+
+### Summary Endpoints
+
+**Router prefix:** `courses/{course_id}/modules/{module_id}/summary`
+**Tag:** `Module Summary`
+**File:** `src/api/module_summary.py`
+
+All summary content lives in MongoDB (`module_summaries`). Same ownership and course-validation rules as quiz endpoints.
+
+| Method   | Path                                                                 | Auth       | Description                                         | Status    |
+|----------|----------------------------------------------------------------------|------------|-----------------------------------------------------|-----------|
+| `GET`    | `/courses/{course_id}/modules/{module_id}/summary`                   | Any user   | Get the published summary for a module              | 200 / 404 |
+| `POST`   | `/courses/{course_id}/modules/{module_id}/summary`                   | Instructor | Create a summary manually (fails if one exists)     | 201 / 409 |
+| `PUT`    | `/courses/{course_id}/modules/{module_id}/summary`                   | Instructor | Replace the entire summary document                 | 200 / 404 |
+| `PATCH`  | `/courses/{course_id}/modules/{module_id}/summary`                   | Instructor | Partial update (title, content fields)              | 200 / 404 |
+| `DELETE` | `/courses/{course_id}/modules/{module_id}/summary`                   | Instructor | Soft-delete summary (`is_active = false`)           | 204 / 404 |
+| `PATCH`  | `/courses/{course_id}/modules/{module_id}/summary/publish`           | Instructor | Toggle `is_published`                               | 200 / 404 |
+| `POST`   | `/courses/{course_id}/modules/{module_id}/summary/generate`          | Instructor | AI-generate summary from lesson content             | 201 / 409 |
+
+#### Endpoint Details
+
+```python
+router = APIRouter(prefix="/courses/{course_id}/modules/{module_id}/summary", tags=["Module Summary"])
+
+@router.get("", response_model=SummaryResponse)
+async def get_module_summary(
+    course_id: int,
+    module_id: str,
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Returns the active, published summary for a module.
+    Raises 404 if no summary exists or it is inactive/unpublished.
+    """
+
+@router.post("", response_model=SummaryResponse, status_code=201)
+async def create_module_summary(
+    course_id: int,
+    module_id: str,
+    payload: SummaryCreate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Manually create a summary for a module.
+    Raises 404 if course/module not found.
+    Raises 403 if instructor does not own the course.
+    Raises 409 if a summary already exists for this module (use PUT to replace).
+    """
+
+@router.put("", response_model=SummaryResponse)
+async def replace_module_summary(
+    course_id: int,
+    module_id: str,
+    payload: SummaryUpdate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Full replacement of the summary document (upserts if none exists).
+    Increments authorship.version. Sets source to 'manual' or 'ai_edited'
+    if the previous version was AI-generated.
+    Raises 403 if instructor does not own the course.
+    """
+
+@router.patch("", response_model=SummaryResponse)
+async def patch_module_summary(
+    course_id: int,
+    module_id: str,
+    payload: SummaryPatch,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Partial update — only provided fields are merged into the existing document.
+    Raises 404 if summary not found. Raises 403 if not owner.
+    """
+
+@router.delete("", status_code=204)
+async def delete_module_summary(
+    course_id: int,
+    module_id: str,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Soft-delete: sets is_active = false on the summary document.
+    Raises 404 if summary not found. Raises 403 if not owner.
+    """
+
+@router.patch("/publish", response_model=SummaryResponse)
+async def publish_module_summary(
+    course_id: int,
+    module_id: str,
+    payload: SummaryPublishUpdate,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    Toggle is_published. Unpublishing hides the summary from students
+    but does not affect existing progress records.
+    Raises 404 if summary not found. Raises 403 if not owner.
+    """
+
+@router.post("/generate", response_model=SummaryResponse, status_code=201)
+async def generate_module_summary(
+    course_id: int,
+    module_id: str,
+    payload: SummaryGenerateRequest,
+    instructor_id: int = Depends(require_instructor),
+):
+    """
+    AI-generate a summary from the specified lessons. Calls the AI service
+    internally. Upserts the result with authorship.source = 'ai_generated'.
+    Raises 404 if course/module/lessons not found.
+    Raises 403 if not owner.
+    """
+```
+
+#### Error Responses
+
+| Code | Trigger                                                               |
+|------|-----------------------------------------------------------------------|
+| 401  | Missing `X-User-ID` header                                            |
+| 403  | Instructor does not own the course                                    |
+| 404  | Course, module, or summary not found / inactive                       |
+| 409  | `POST /summary` called when summary already exists for this module    |
+| 422  | Pydantic validation failure                                           |
+
+---
+
+### Router Registration
+
+Add both routers to `src/api/router.py`:
+
+```python
+from src.api import module_quiz, module_summary
+
+router.include_router(module_quiz.router,    prefix="/courses", tags=["Module Quiz"])
+router.include_router(module_summary.router, prefix="/courses", tags=["Module Summary"])
+```
+
+---
+
+### Authorship Version Logic
+
+Both quiz and summary services apply the same versioning rule on every write:
+
+| Previous source  | Operation        | New source   | Version    |
+|------------------|------------------|--------------|------------|
+| *(none)*         | manual create    | `manual`     | 1          |
+| *(none)*         | AI generate      | `ai_generated` | 1        |
+| `ai_generated`   | PUT / PATCH      | `ai_edited`  | prev + 1   |
+| `manual`         | PUT / PATCH      | `manual`     | prev + 1   |
+| `ai_edited`      | PUT / PATCH      | `ai_edited`  | prev + 1   |
+| any              | AI generate      | `ai_generated` | prev + 1 |
+
+`last_edited_by` and `last_edited_at` are always updated on any write.
+
+---
+
+### Complete Endpoint Summary
+
+| Method   | Path                                                                    | Auth       | Description                          |
+|----------|-------------------------------------------------------------------------|------------|--------------------------------------|
+| `GET`    | `/courses/{id}/modules/{mid}/quiz`                                      | Any user   | Fetch module quiz                    |
+| `POST`   | `/courses/{id}/modules/{mid}/quiz`                                      | Instructor | Create quiz manually                 |
+| `PUT`    | `/courses/{id}/modules/{mid}/quiz`                                      | Instructor | Replace quiz                         |
+| `PATCH`  | `/courses/{id}/modules/{mid}/quiz`                                      | Instructor | Partial update quiz                  |
+| `DELETE` | `/courses/{id}/modules/{mid}/quiz`                                      | Instructor | Soft-delete quiz                     |
+| `PATCH`  | `/courses/{id}/modules/{mid}/quiz/publish`                              | Instructor | Toggle published state               |
+| `POST`   | `/courses/{id}/modules/{mid}/quiz/generate`                             | Instructor | AI-generate quiz                     |
+| `GET`    | `/courses/{id}/modules/{mid}/summary`                                   | Any user   | Fetch module summary                 |
+| `POST`   | `/courses/{id}/modules/{mid}/summary`                                   | Instructor | Create summary manually              |
+| `PUT`    | `/courses/{id}/modules/{mid}/summary`                                   | Instructor | Replace summary                      |
+| `PATCH`  | `/courses/{id}/modules/{mid}/summary`                                   | Instructor | Partial update summary               |
+| `DELETE` | `/courses/{id}/modules/{mid}/summary`                                   | Instructor | Soft-delete summary                  |
+| `PATCH`  | `/courses/{id}/modules/{mid}/summary/publish`                           | Instructor | Toggle published state               |
+| `POST`   | `/courses/{id}/modules/{mid}/summary/generate`                          | Instructor | AI-generate summary                  |

@@ -13,7 +13,14 @@ from config import settings
 from core.database import Base
 
 # Import ALL models so they register with Base.metadata
-from models import Certificate, Course, Enrollment, Progress  # noqa: F401
+from models import (  # noqa: F401
+    Certificate,
+    Course,
+    Enrollment,
+    Progress,
+    QuizAttempt,
+    UserAnswer,
+)
 
 # Alembic Config object
 config = context.config
@@ -26,7 +33,15 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Course-service owns only these tables; exclude user-service tables from autogenerate
-COURSE_SERVICE_TABLES = {"courses", "enrollments", "certificates", "progress", "alembic_version_course"}
+COURSE_SERVICE_TABLES = {
+    "courses",
+    "enrollments",
+    "certificates",
+    "progress",
+    "quiz_attempts",
+    "user_answers",
+    "alembic_version_course",
+}
 
 
 def include_object(object, name, type_, reflected, compare_to):
@@ -38,9 +53,7 @@ def include_object(object, name, type_, reflected, compare_to):
 
 def get_url() -> str:
     """Build the async database URL from app settings."""
-    return settings.DATABASE_URL.replace(
-        "postgresql://", "postgresql+asyncpg://"
-    )
+    return settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 
 def run_migrations_offline() -> None:

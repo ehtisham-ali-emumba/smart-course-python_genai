@@ -12,7 +12,7 @@ class ProgressCreate(BaseModel):
     """Schema for creating or updating progress on a lesson/quiz/summary."""
 
     enrollment_id: int
-    item_type: str = Field(..., pattern=r"^(lesson|quiz|summary)$")
+    item_type: str = Field(..., pattern=r"^(lesson|quiz|summary|module_quiz|module_summary)$")
     item_id: str
     progress_percentage: Decimal = Field(..., ge=0, le=100)
 
