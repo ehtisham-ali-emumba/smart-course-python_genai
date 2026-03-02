@@ -6,13 +6,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from core_service.api.router import router
 from core_service.config import core_settings
 from core_service.kafka.enrollment_consumer import run_enrollment_consumer
 from core_service.temporal.client import close_temporal_client
 from core_service.temporal.worker import run_worker_with_retry
 
-logging.basicConfig(level=getattr(logging, core_settings.LOG_LEVEL.upper(), logging.INFO))
+logging.basicConfig(
+    level=getattr(logging, core_settings.LOG_LEVEL.upper(), logging.INFO)
+)
 logger = logging.getLogger(__name__)
 
 # Background tasks
@@ -68,8 +69,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(router)
-
 
 @app.get("/health")
 async def health_check() -> dict:
@@ -78,4 +77,3 @@ async def health_check() -> dict:
         "status": "ok",
         "service": "core-service",
     }
-

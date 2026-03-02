@@ -1,12 +1,12 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Notification service configuration."""
 
-    SERVICE_NAME: str = "notification-service"
-    SERVICE_PORT: int = 8005
-    LOG_LEVEL: str = "INFO"
+    SERVICE_NAME: str
+    SERVICE_PORT: int
+    LOG_LEVEL: str
 
     # Future: Email configuration (not used yet)
     SMTP_HOST: str = ""
@@ -19,13 +19,11 @@ class Settings(BaseSettings):
     FIREBASE_PROJECT_ID: str = ""
 
     # Kafka — fire-and-forget event consumption for notifications & certificates
-    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
-    RABBITMQ_URL: str = "amqp://smartcourse:smartcourse_secret@rabbitmq:5672//"
-    CELERY_RESULT_BACKEND: str = "redis://:smartcourse_secret@redis:6379/2"
+    KAFKA_BOOTSTRAP_SERVERS: str
+    RABBITMQ_URL: str
+    CELERY_RESULT_BACKEND: str
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # Loaded from .env at runtime

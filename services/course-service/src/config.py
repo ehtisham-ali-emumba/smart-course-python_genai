@@ -1,26 +1,24 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # PostgreSQL
-    DATABASE_URL: str = "postgresql://smartcourse:smartcourse_secret@localhost:5432/smartcourse"
+    DATABASE_URL: str
 
     # MongoDB
-    MONGODB_URL: str = "mongodb://smartcourse:smartcourse_secret@localhost:27017/smartcourse?authSource=admin"
-    MONGODB_DB_NAME: str = "smartcourse"
+    MONGODB_URL: str
+    MONGODB_DB_NAME: str
 
     # Redis
-    REDIS_URL: str = "redis://:smartcourse_secret@localhost:6379/1"
+    REDIS_URL: str
 
     # Kafka
-    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
-    SCHEMA_REGISTRY_URL: str = "http://schema-registry:8081"
+    KAFKA_BOOTSTRAP_SERVERS: str
+    SCHEMA_REGISTRY_URL: str
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # Loaded from .env at runtime
