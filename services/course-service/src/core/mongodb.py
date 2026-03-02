@@ -1,4 +1,9 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from typing import cast
+
+from motor.motor_asyncio import (
+    AsyncIOMotorClient,
+    AsyncIOMotorDatabase,
+)
 
 from config import settings
 
@@ -10,24 +15,27 @@ _database: AsyncIOMotorDatabase | None = None
 async def connect_mongodb() -> None:
     """Initialize MongoDB connection. Call on app startup."""
     global _client, _database
-    _client = AsyncIOMotorClient(settings.MONGODB_URL)
-    _database = _client[settings.MONGODB_DB_NAME]
+    client = AsyncIOMotorClient(settings.MONGODB_URL)
+    database = client[settings.MONGODB_DB_NAME]
+
+    _client = client
+    _database = database
 
     # Create indexes on first connect
-    await _database.course_content.create_index("course_id", unique=True)
-    await _database.course_content.create_index("updated_at")
+    await database["course_content"].create_index("course_id", unique=True)
+    await database["course_content"].create_index("updated_at")
 
-    await _database.module_quizzes.create_index(
+    await database["module_quizzes"].create_index(
         [("course_id", 1), ("module_id", 1)],
         unique=True,
     )
-    await _database.module_quizzes.create_index("course_id")
+    await database["module_quizzes"].create_index("course_id")
 
-    await _database.module_summaries.create_index(
+    await database["module_summaries"].create_index(
         [("course_id", 1), ("module_id", 1)],
         unique=True,
     )
-    await _database.module_summaries.create_index("course_id")
+    await database["module_summaries"].create_index("course_id")
 
 
 async def close_mongodb() -> None:
@@ -41,4 +49,4 @@ def get_mongodb() -> AsyncIOMotorDatabase:
     """Get MongoDB database instance. Used as FastAPI dependency."""
     if _database is None:
         raise RuntimeError("MongoDB not initialized. Call connect_mongodb() first.")
-    return _database
+    return cast(AsyncIOMotorDatabase, _database)
