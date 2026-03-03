@@ -15,11 +15,10 @@ from ai_service.schemas.instructor import (
     GenerateSummaryResponse,
     GenerateQuizRequest,
     GenerateQuizResponse,
-    GenerateAllRequest,
-    GenerateAllResponse,
     GenerationStatusResponse,
 )
 from ai_service.schemas.common import GenerationStatus
+from ai_service.services.generation_status import GenerationStatusTracker
 
 logger = structlog.get_logger(__name__)
 
@@ -33,6 +32,7 @@ class InstructorService:
         openai_client: OpenAIClient,
         course_client: CourseServiceClient,
         resource_extractor: ResourceTextExtractor,
+        status_tracker: GenerationStatusTracker,
     ):
         """Initialize instructor service with dependencies.
 
@@ -41,11 +41,13 @@ class InstructorService:
             openai_client: OpenAIClient for LLM calls
             course_client: CourseServiceClient for persistence
             resource_extractor: ResourceTextExtractor for PDF extraction
+            status_tracker: GenerationStatusTracker for Redis-based status tracking
         """
         self.repo = repo
         self.openai_client = openai_client
         self.course_client = course_client
         self.resource_extractor = resource_extractor
+        self.status_tracker = status_tracker
 
     async def _validate_course_ownership_and_module(
         self,
@@ -152,6 +154,9 @@ class InstructorService:
     ) -> None:
         """Background task: fetch content, generate summary, persist to course-service."""
         try:
+            # ✅ Mark IN_PROGRESS before doing any work
+            await self.status_tracker.set_in_progress(course_id, module_id, "summary")
+
             # Fetch module and lessons from MongoDB
             context_data = await self.repo.get_module_with_lessons(
                 course_id, module_id, request.source_lesson_ids
@@ -161,6 +166,9 @@ class InstructorService:
                     "Module not found for summary generation",
                     course_id=course_id,
                     module_id=module_id,
+                )
+                await self.status_tracker.set_failed(
+                    course_id, module_id, "summary", "Module not found"
                 )
                 return
 
@@ -219,12 +227,18 @@ class InstructorService:
             # Save via HTTP to course-service
             result = await self.course_client.save_summary(course_id, module_id, payload, user_id)
             if result:
+                # ✅ Mark COMPLETED after successful save
+                await self.status_tracker.set_completed(course_id, module_id, "summary")
                 logger.info(
                     "Summary generated and saved successfully",
                     course_id=course_id,
                     module_id=module_id,
                 )
             else:
+                # ✅ Mark FAILED on save failure
+                await self.status_tracker.set_failed(
+                    course_id, module_id, "summary", "Failed to save to course-service"
+                )
                 logger.warning(
                     "Summary generated but failed to save to course-service",
                     course_id=course_id,
@@ -232,6 +246,8 @@ class InstructorService:
                 )
 
         except Exception as e:
+            # ✅ Mark FAILED on error
+            await self.status_tracker.set_failed(course_id, module_id, "summary", str(e))
             logger.exception(
                 "Error during summary generation",
                 course_id=course_id,
@@ -294,6 +310,9 @@ class InstructorService:
     ) -> None:
         """Background task: fetch content, generate quiz, persist to course-service."""
         try:
+            # ✅ Mark IN_PROGRESS before doing any work
+            await self.status_tracker.set_in_progress(course_id, module_id, "quiz")
+
             # Fetch module and lessons from MongoDB
             context_data = await self.repo.get_module_with_lessons(
                 course_id, module_id, request.source_lesson_ids
@@ -303,6 +322,9 @@ class InstructorService:
                     "Module not found for quiz generation",
                     course_id=course_id,
                     module_id=module_id,
+                )
+                await self.status_tracker.set_failed(
+                    course_id, module_id, "quiz", "Module not found"
                 )
                 return
 
@@ -377,12 +399,18 @@ class InstructorService:
             # Save via HTTP to course-service
             result = await self.course_client.save_quiz(course_id, module_id, payload, user_id)
             if result:
+                # ✅ Mark COMPLETED after successful save
+                await self.status_tracker.set_completed(course_id, module_id, "quiz")
                 logger.info(
                     "Quiz generated and saved successfully",
                     course_id=course_id,
                     module_id=module_id,
                 )
             else:
+                # ✅ Mark FAILED on save failure
+                await self.status_tracker.set_failed(
+                    course_id, module_id, "quiz", "Failed to save to course-service"
+                )
                 logger.warning(
                     "Quiz generated but failed to save to course-service",
                     course_id=course_id,
@@ -390,6 +418,8 @@ class InstructorService:
                 )
 
         except Exception as e:
+            # ✅ Mark FAILED on error
+            await self.status_tracker.set_failed(course_id, module_id, "quiz", str(e))
             logger.exception(
                 "Error during quiz generation",
                 course_id=course_id,
@@ -397,98 +427,12 @@ class InstructorService:
                 error=str(e),
             )
 
-    async def generate_all(
-        self,
-        course_id: int,
-        module_id: str,
-        request: GenerateAllRequest,
-        user_id: int,
-    ) -> GenerateAllResponse:
-        """Generate both summary and quiz for a module (async tasks).
-
-        Validates course ownership and module existence before kicking off both
-        background tasks in parallel and returning immediately.
-
-        Args:
-            course_id: Course ID
-            module_id: Module ID
-            request: Combined generation request
-            user_id: Authenticated instructor user ID
-
-        Returns:
-            GenerateAllResponse with both responses (status PENDING)
-        """
-        log = logger.bind(course_id=course_id, module_id=module_id, user_id=user_id)
-        log.info("Generate-all requested (summary + quiz)")
-
-        # Guard: validate before firing the background tasks
-        await self._validate_course_ownership_and_module(course_id, module_id, user_id)
-
-        log.info("Validation passed — dispatching summary and quiz generation tasks")
-
-        # Fire both background tasks in parallel
-        asyncio.create_task(
-            self._process_and_save_summary(
-                course_id,
-                module_id,
-                GenerateSummaryRequest(
-                    source_lesson_ids=request.source_lesson_ids,
-                    include_glossary=request.include_glossary,
-                    include_key_points=request.include_key_points,
-                    include_learning_objectives=request.include_learning_objectives,
-                    language=request.summary_language,
-                    tone=None,
-                    max_length_words=None,
-                ),
-                user_id,
-            )
-        )
-        asyncio.create_task(
-            self._process_and_save_quiz(
-                course_id,
-                module_id,
-                GenerateQuizRequest(
-                    source_lesson_ids=request.source_lesson_ids,
-                    num_questions=request.num_questions,
-                    difficulty=request.difficulty,
-                    question_types=request.question_types,
-                    passing_score=70,
-                    max_attempts=3,
-                    time_limit_minutes=None,
-                    language=request.quiz_language,
-                ),
-                user_id,
-            )
-        )
-
-        summary = GenerateSummaryResponse(
-            course_id=course_id,
-            module_id=module_id,
-            source_lesson_ids=request.source_lesson_ids or [],
-            summary_id=None,
-            status=GenerationStatus.PENDING,
-            message="Summary generation started.",
-        )
-        quiz = GenerateQuizResponse(
-            course_id=course_id,
-            module_id=module_id,
-            source_lesson_ids=request.source_lesson_ids or [],
-            quiz_id=None,
-            status=GenerationStatus.PENDING,
-            message="Quiz generation started.",
-        )
-
-        return GenerateAllResponse(
-            course_id=course_id,
-            module_id=module_id,
-            summary=summary,
-            quiz=quiz,
-        )
-
     async def get_generation_status(
         self, course_id: int, module_id: str
     ) -> GenerationStatusResponse:
         """Check generation status for a module.
+
+        Uses Redis for in-flight/recent status, falls back to MongoDB for persisted content.
 
         Args:
             course_id: Course ID
@@ -497,28 +441,54 @@ class InstructorService:
         Returns:
             GenerationStatusResponse with completion status and timestamps
         """
-        # Check if summary and quiz exist
-        existing_summary = await self.repo.get_existing_summary(course_id, module_id)
-        existing_quiz = await self.repo.get_existing_quiz(course_id, module_id)
+        # 1. Check Redis for active/recent status
+        redis_summary = await self.status_tracker.get_status(course_id, module_id, "summary")
+        redis_quiz = await self.status_tracker.get_status(course_id, module_id, "quiz")
 
-        # Determine status and timestamps
-        summary_status = (
-            GenerationStatus.COMPLETED if existing_summary else GenerationStatus.PENDING
-        )
-        quiz_status = GenerationStatus.COMPLETED if existing_quiz else GenerationStatus.PENDING
+        # 2. Determine summary status
+        if redis_summary:
+            summary_status = GenerationStatus(redis_summary["status"])
+            summary_error = redis_summary.get("error")
+        else:
+            # Fallback: check if content already exists in MongoDB
+            existing = await self.repo.get_existing_summary(course_id, module_id)
+            summary_status = (
+                GenerationStatus.COMPLETED if existing else GenerationStatus.NOT_STARTED
+            )
+            summary_error = None
 
+        # 3. Determine quiz status
+        if redis_quiz:
+            quiz_status = GenerationStatus(redis_quiz["status"])
+            quiz_error = redis_quiz.get("error")
+        else:
+            existing = await self.repo.get_existing_quiz(course_id, module_id)
+            quiz_status = GenerationStatus.COMPLETED if existing else GenerationStatus.NOT_STARTED
+            quiz_error = None
+
+        # 4. Determine last_generation_at from whichever source has data
         last_generation_at = None
-        if existing_summary:
-            last_generation_at = existing_summary.get("created_at")
-        if existing_quiz:
-            quiz_created = existing_quiz.get("created_at")
-            if quiz_created and (not last_generation_at or quiz_created > last_generation_at):
-                last_generation_at = quiz_created
+        for redis_data in [redis_summary, redis_quiz]:
+            if redis_data and redis_data.get("completed_at"):
+                ts = datetime.fromisoformat(redis_data["completed_at"])
+                if not last_generation_at or ts > last_generation_at:
+                    last_generation_at = ts
+
+        # Fallback timestamps from MongoDB if no Redis data
+        if not last_generation_at:
+            for getter in [self.repo.get_existing_summary, self.repo.get_existing_quiz]:
+                doc = await getter(course_id, module_id)
+                if doc and doc.get("created_at"):
+                    ts = doc["created_at"]
+                    if not last_generation_at or ts > last_generation_at:
+                        last_generation_at = ts
 
         return GenerationStatusResponse(
             course_id=course_id,
             module_id=module_id,
             summary_status=summary_status,
             quiz_status=quiz_status,
+            summary_error=summary_error,
+            quiz_error=quiz_error,
             last_generation_at=last_generation_at,
         )

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ai_service.api.dependencies import require_instructor
 from ai_service.core.mongodb import get_mongodb
+from ai_service.core.redis import get_redis
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
@@ -14,11 +15,10 @@ from ai_service.schemas.instructor import (
     GenerateSummaryResponse,
     GenerateQuizRequest,
     GenerateQuizResponse,
-    GenerateAllRequest,
-    GenerateAllResponse,
     GenerationStatusResponse,
 )
 from ai_service.services.instructor import InstructorService
+from ai_service.services.generation_status import GenerationStatusTracker
 
 router = APIRouter()
 
@@ -31,12 +31,17 @@ def get_instructor_service() -> InstructorService:
     if db is None:
         raise RuntimeError("MongoDB connection not initialized")
 
+    redis = get_redis()
+    if redis is None:
+        raise RuntimeError("Redis connection not initialized")
+
     repo = CourseContentRepository(db)
     openai_client = OpenAIClient()
     course_client = CourseServiceClient()
     resource_extractor = ResourceTextExtractor()
+    status_tracker = GenerationStatusTracker(redis)
 
-    return InstructorService(repo, openai_client, course_client, resource_extractor)
+    return InstructorService(repo, openai_client, course_client, resource_extractor, status_tracker)
 
 
 @router.post(
@@ -110,33 +115,6 @@ async def generate_quiz(
         question_types=request.question_types,
     )
     return await service.generate_quiz(course_id, module_id, request, user_id)
-
-
-@router.post(
-    "/modules/{module_id}/generate-all",
-    response_model=GenerateAllResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def generate_all(
-    module_id: str,
-    course_id: int,
-    request: GenerateAllRequest,
-    user_id: int = Depends(require_instructor),
-    service: InstructorService = Depends(get_instructor_service),
-) -> GenerateAllResponse:
-    """Generate both summary and quiz for a module.
-
-    Args:
-        module_id: Module ID (bson ObjectId hex)
-        course_id: Course ID (query parameter, required)
-        request: Combined generation request body
-        user_id: Authenticated instructor user ID (from dependency)
-        service: InstructorService instance (dependency injection)
-
-    Returns:
-        GenerateAllResponse with both responses (status PENDING, work runs in background)
-    """
-    return await service.generate_all(course_id, module_id, request, user_id)
 
 
 @router.get(

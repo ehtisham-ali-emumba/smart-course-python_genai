@@ -9,11 +9,11 @@ from pydantic import BaseModel
 class GenerationStatus(str, Enum):
     """Status values for content generation."""
 
+    NOT_STARTED = "not_started"
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
-    NOT_IMPLEMENTED = "not_implemented"
 
 
 class DifficultyLevel(str, Enum):

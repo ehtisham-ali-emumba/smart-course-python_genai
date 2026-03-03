@@ -42,8 +42,8 @@ class GenerateSummaryResponse(BaseModel):
         None,
         description="MongoDB _id of the persisted summary (populated after generation).",
     )
-    status: GenerationStatus = GenerationStatus.NOT_IMPLEMENTED
-    message: str = "Summary generation is not yet implemented."
+    status: GenerationStatus = GenerationStatus.PENDING
+    message: str = "Summary generation started."
     requested_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
@@ -83,45 +83,10 @@ class GenerateQuizResponse(BaseModel):
         description="MongoDB _id of the persisted quiz (populated after generation).",
     )
     question_count: int = 0
-    status: GenerationStatus = GenerationStatus.NOT_IMPLEMENTED
-    message: str = "Quiz generation is not yet implemented."
+    status: GenerationStatus = GenerationStatus.PENDING
+    message: str = "Quiz generation started."
     requested_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
-
-
-# ── Combined Generation ──────────────────────────────────────────────
-
-
-class GenerateAllRequest(BaseModel):
-    """Request body for POST /modules/{module_id}/generate-all."""
-
-    source_lesson_ids: Optional[list[str]] = None
-
-    # Summary options
-    include_glossary: bool = True
-    include_key_points: bool = True
-    include_learning_objectives: bool = True
-    summary_language: str = Field("en", max_length=10)
-
-    # Quiz options
-    num_questions: int = Field(5, ge=1, le=20)
-    difficulty: Optional[DifficultyLevel] = None
-    question_types: list[QuestionType] = Field(
-        default_factory=lambda: [
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.TRUE_FALSE,
-        ],
-    )
-    quiz_language: str = Field("en", max_length=10)
-
-
-class GenerateAllResponse(BaseModel):
-    """Response for combined summary + quiz generation."""
-
-    course_id: int
-    module_id: str
-    summary: GenerateSummaryResponse
-    quiz: GenerateQuizResponse
 
 
 # ── Generation Status ────────────────────────────────────────────────
@@ -132,7 +97,8 @@ class GenerationStatusResponse(BaseModel):
 
     course_id: int
     module_id: str
-    summary_status: GenerationStatus = GenerationStatus.NOT_IMPLEMENTED
-    quiz_status: GenerationStatus = GenerationStatus.NOT_IMPLEMENTED
+    summary_status: GenerationStatus = GenerationStatus.NOT_STARTED
+    quiz_status: GenerationStatus = GenerationStatus.NOT_STARTED
+    summary_error: str | None = None
+    quiz_error: str | None = None
     last_generation_at: Optional[datetime] = None
-    message: str = "Generation status tracking is not yet implemented."
