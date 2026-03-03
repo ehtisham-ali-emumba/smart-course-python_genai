@@ -3,6 +3,7 @@
 import asyncio
 import structlog
 from datetime import datetime
+from typing import Any
 
 from fastapi import HTTPException, status
 
@@ -358,43 +359,7 @@ class InstructorService:
                 language=request.language,
             )
 
-            # Build persistence payload matching course-service QuizCreate schema
-            payload = {
-                "title": generated.title,
-                "description": generated.description,
-                "settings": {
-                    "passing_score": request.passing_score,
-                    "time_limit_minutes": request.time_limit_minutes,
-                    "max_attempts": request.max_attempts,
-                    "shuffle_questions": True,
-                    "shuffle_options": True,
-                    "show_correct_answers_after": "completion",
-                },
-                "questions": [
-                    {
-                        "order": q.order,
-                        "question_text": q.question_text,
-                        "question_type": q.question_type,
-                        "options": (
-                            [
-                                {
-                                    "option_id": opt.option_id,
-                                    "text": opt.text,
-                                    "is_correct": opt.is_correct,
-                                }
-                                for opt in q.options
-                            ]
-                            if q.options
-                            else None
-                        ),
-                        "correct_answers": q.correct_answers,
-                        "explanation": q.explanation,
-                        "hint": q.hint,
-                    }
-                    for q in generated.questions
-                ],
-                "is_published": False,
-            }
+            payload = self._build_quiz_payload(generated, request)
 
             # Save via HTTP to course-service
             result = await self.course_client.save_quiz(course_id, module_id, payload, user_id)
@@ -426,6 +391,142 @@ class InstructorService:
                 module_id=module_id,
                 error=str(e),
             )
+
+    def _build_quiz_payload(self, generated: Any, request: GenerateQuizRequest) -> dict[str, Any]:
+        questions: list[dict[str, Any]] = []
+        for index, question in enumerate(generated.questions, start=1):
+            normalized = self._normalize_generated_question(question, index)
+            if normalized is not None:
+                questions.append(normalized)
+
+        if not questions:
+            raise ValueError("No valid quiz questions generated from AI response")
+
+        title = (generated.title or "Module Quiz").strip()[:300] or "Module Quiz"
+        description = generated.description.strip() if generated.description else None
+
+        return {
+            "title": title,
+            "description": description,
+            "settings": {
+                "passing_score": request.passing_score,
+                "time_limit_minutes": request.time_limit_minutes,
+                "max_attempts": request.max_attempts,
+                "shuffle_questions": True,
+                "shuffle_options": True,
+                "show_correct_answers_after": "completion",
+            },
+            "questions": questions,
+            "is_published": False,
+        }
+
+    def _normalize_generated_question(self, question: Any, index: int) -> dict[str, Any] | None:
+        question_type = question.question_type
+        question_text = (question.question_text or "").strip() or f"Question {index}"
+        explanation = question.explanation.strip() if question.explanation else None
+        hint = question.hint.strip() if question.hint else None
+
+        if question_type == "short_answer":
+            correct_answers = [
+                answer.strip()
+                for answer in (question.correct_answers or [])
+                if isinstance(answer, str) and answer.strip()
+            ]
+            if not correct_answers:
+                logger.warning("Skipping invalid short_answer question with no correct_answers")
+                return None
+
+            return {
+                "order": index,
+                "question_text": question_text,
+                "question_type": "short_answer",
+                "options": None,
+                "correct_answers": correct_answers,
+                "explanation": explanation,
+                "hint": hint,
+            }
+
+        options = []
+        for option in question.options or []:
+            option_text = (option.text or "").strip()
+            if not option_text:
+                continue
+            options.append(
+                {
+                    "option_id": (option.option_id or "").strip(),
+                    "text": option_text,
+                    "is_correct": bool(option.is_correct),
+                }
+            )
+
+        if question_type == "true_false":
+            true_is_correct = True
+            for option in options:
+                option_id = option["option_id"].lower()
+                option_text = option["text"].strip().lower()
+                if option_id == "opt_false" or option_text in {"false", "no"}:
+                    if option["is_correct"]:
+                        true_is_correct = False
+                        break
+                if option_id == "opt_true" or option_text in {"true", "yes"}:
+                    if option["is_correct"]:
+                        true_is_correct = True
+                        break
+
+            normalized_options = [
+                {"option_id": "opt_true", "text": "True", "is_correct": true_is_correct},
+                {"option_id": "opt_false", "text": "False", "is_correct": not true_is_correct},
+            ]
+            return {
+                "order": index,
+                "question_text": question_text,
+                "question_type": "true_false",
+                "options": normalized_options,
+                "correct_answers": None,
+                "explanation": explanation,
+                "hint": hint,
+            }
+
+        if len(options) < 2:
+            logger.warning(
+                "Skipping invalid objective question with insufficient options",
+                question_type=question_type,
+            )
+            return None
+
+        normalized_options = []
+        for option_index, option in enumerate(options):
+            letter = chr(ord("a") + option_index)
+            normalized_options.append(
+                {
+                    "option_id": f"opt_{letter}",
+                    "text": option["text"],
+                    "is_correct": bool(option["is_correct"]),
+                }
+            )
+
+        if question_type == "multiple_choice":
+            first_correct_index = next(
+                (i for i, option in enumerate(normalized_options) if option["is_correct"]),
+                0,
+            )
+            for option_index, option in enumerate(normalized_options):
+                option["is_correct"] = option_index == first_correct_index
+
+        if question_type == "multiple_select" and not any(
+            option["is_correct"] for option in normalized_options
+        ):
+            normalized_options[0]["is_correct"] = True
+
+        return {
+            "order": index,
+            "question_text": question_text,
+            "question_type": question_type,
+            "options": normalized_options,
+            "correct_answers": None,
+            "explanation": explanation,
+            "hint": hint,
+        }
 
     async def get_generation_status(
         self, course_id: int, module_id: str

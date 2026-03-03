@@ -88,6 +88,20 @@ class CourseServiceClient:
                 resp.raise_for_status()
                 return resp.json()
 
+            except httpx.HTTPStatusError as e:
+                response_body = None
+                if e.response is not None:
+                    response_body = e.response.text[:2000]
+                logger.error(
+                    "Failed to save quiz",
+                    error=str(e),
+                    status_code=e.response.status_code if e.response else None,
+                    response_body=response_body,
+                    course_id=course_id,
+                    module_id=module_id,
+                )
+                return None
+
             except httpx.HTTPError as e:
                 logger.error(
                     "Failed to save quiz",
