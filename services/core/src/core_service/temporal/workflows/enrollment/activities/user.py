@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from temporalio import activity
 
 from core_service.config import core_settings
-from core_service.temporal.activities.http_client import get_json
+from core_service.temporal.common.http_client import get_json
 
 logger = logging.getLogger(__name__)
 
 USER_SERVICE = core_settings.USER_SERVICE_URL
 
 
-# ── Data classes (same shape as mock, so workflow code needs no changes) ──────
+# ── Data classes ───────────────────────────────────────────────────────────────
 
 
 @dataclass

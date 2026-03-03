@@ -8,8 +8,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from core_service.config import core_settings
-from core_service.temporal.activities import ALL_ACTIVITIES
-from core_service.temporal.workflows import ALL_WORKFLOWS
+from core_service.temporal.workflows import ALL_ACTIVITIES, ALL_WORKFLOWS
 
 logger = logging.getLogger(__name__)
 

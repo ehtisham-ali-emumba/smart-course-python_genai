@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from temporalio import activity
 
 from core_service.config import core_settings
-from core_service.temporal.activities.http_client import post_json
+from core_service.temporal.common.http_client import post_json
 
 logger = logging.getLogger(__name__)
 

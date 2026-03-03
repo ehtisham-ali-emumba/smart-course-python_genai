@@ -10,7 +10,7 @@ from shared.kafka.topics import Topics
 from shared.schemas.envelope import EventEnvelope
 
 from core_service.config import core_settings
-from core_service.temporal.client import get_temporal_client
+from core_service.temporal.common.temporal_client import get_temporal_client
 from core_service.temporal.workflows import (
     EnrollmentWorkflow,
     EnrollmentWorkflowInput,

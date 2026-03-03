@@ -1,12 +1,11 @@
 """
-Temporal activities for core-service.
+Activities for the enrollment workflow.
 
-All imports are re-exported here so workflows and the worker
-only import from this single package — the real vs mock switch
-happens in one place.
+Aggregates user, course, and notification activities so the workflow
+and worker only need to import from this single package.
 """
 
-from core_service.temporal.activities.user_activities import (
+from core_service.temporal.workflows.enrollment.activities.user import (
     fetch_user_details,
     validate_user_for_enrollment,
     FetchUserInput,
@@ -15,7 +14,7 @@ from core_service.temporal.activities.user_activities import (
     ValidateUserEnrollmentOutput,
     USER_ACTIVITIES,
 )
-from core_service.temporal.activities.course_activities import (
+from core_service.temporal.workflows.enrollment.activities.course import (
     fetch_course_details,
     enroll_in_course,
     fetch_course_modules,
@@ -27,7 +26,7 @@ from core_service.temporal.activities.course_activities import (
     FetchCourseModulesOutput,
     COURSE_ACTIVITIES,
 )
-from core_service.temporal.activities.notification_activities import (
+from core_service.temporal.workflows.enrollment.activities.notification import (
     trigger_enrollment_notifications,
     send_in_app_notification,
     TriggerEnrollmentNotificationsInput,
@@ -37,7 +36,6 @@ from core_service.temporal.activities.notification_activities import (
     NOTIFICATION_ACTIVITIES,
 )
 
-# All activities registered with the Temporal worker
 ALL_ACTIVITIES = USER_ACTIVITIES + COURSE_ACTIVITIES + NOTIFICATION_ACTIVITIES
 
 __all__ = [
@@ -48,6 +46,7 @@ __all__ = [
     "FetchUserOutput",
     "ValidateUserEnrollmentInput",
     "ValidateUserEnrollmentOutput",
+    "USER_ACTIVITIES",
     # Course
     "fetch_course_details",
     "enroll_in_course",
@@ -58,6 +57,7 @@ __all__ = [
     "EnrollInCourseOutput",
     "FetchCourseModulesInput",
     "FetchCourseModulesOutput",
+    "COURSE_ACTIVITIES",
     # Notification
     "trigger_enrollment_notifications",
     "send_in_app_notification",
@@ -65,6 +65,7 @@ __all__ = [
     "TriggerEnrollmentNotificationsOutput",
     "SendInAppNotificationInput",
     "SendInAppNotificationOutput",
-    # Combined list
+    "NOTIFICATION_ACTIVITIES",
+    # Aggregated
     "ALL_ACTIVITIES",
 ]

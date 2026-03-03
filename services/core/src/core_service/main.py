@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from core_service.config import core_settings
 from core_service.kafka.enrollment_consumer import run_enrollment_consumer
-from core_service.temporal.client import close_temporal_client
+from core_service.temporal.common.temporal_client import close_temporal_client
 from core_service.temporal.worker import run_worker_with_retry
 
 logging.basicConfig(

@@ -8,7 +8,7 @@ from temporalio.common import RetryPolicy
 
 # Import activity stubs - these are executed by the worker
 with workflow.unsafe.imports_passed_through():
-    from core_service.temporal.activities import (
+    from core_service.temporal.workflows.enrollment.activities import (
         # User activities
         fetch_user_details,
         validate_user_for_enrollment,
