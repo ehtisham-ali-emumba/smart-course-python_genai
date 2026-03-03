@@ -3,10 +3,11 @@
 import logging
 from dataclasses import dataclass, field
 
+import aiohttp
 from temporalio import activity
 
 from core_service.config import core_settings
-from core_service.temporal.activities.http_client import get_json
+from core_service.temporal.activities.http_client import get_json, post_json
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,15 @@ class FetchCourseOutput:
 
 
 @dataclass
-class InitializeProgressInput:
+class EnrollInCourseInput:
     student_id: int
     course_id: int
-    enrollment_id: int | None = None
+    payment_amount: float = 0
+    enrollment_source: str = "web"
 
 
 @dataclass
-class InitializeProgressOutput:
+class EnrollInCourseOutput:
     success: bool
     enrollment_id: int | None = None
     enrollment_status: str | None = None
@@ -88,53 +90,71 @@ async def fetch_course_details(input: FetchCourseInput) -> FetchCourseOutput:
         return FetchCourseOutput(success=False, course_id=input.course_id, error=str(e))
 
 
-@activity.defn(name="initialize_course_progress")
-async def initialize_course_progress(
-    input: InitializeProgressInput,
-) -> InitializeProgressOutput:
+@activity.defn(name="enroll_in_course")
+async def enroll_in_course(
+    input: EnrollInCourseInput,
+) -> EnrollInCourseOutput:
     """
-    Verify the enrollment is active in course-service.
+    POST /course/enrollments/internal/create to enroll a student.
 
-    The enrollment record is already created BEFORE this workflow runs
-    (the Kafka event fires after the DB insert). This activity simply
-    confirms the enrollment exists and is active — progress rows are
-    created on-demand when the student first interacts with content.
-
-    If enrollment_id is provided, uses GET /enrollments/{enrollment_id}.
-    Otherwise looks up via GET /enrollments/course/{course_id}/active-students.
+    Uses the internal endpoint which:
+    - Creates enrollment directly in DB (no Kafka event)
+    - Is idempotent (returns existing enrollment if already enrolled)
     """
+    logger.info(
+        "enroll_in_course: student_id=%d, course_id=%d",
+        input.student_id,
+        input.course_id,
+    )
+
+    url = f"{COURSE_SERVICE}/course/enrollments/internal/create"
     headers = {"X-User-ID": str(input.student_id), "X-User-Role": "student"}
+    payload = {
+        "course_id": input.course_id,
+        "payment_amount": input.payment_amount,
+        "enrollment_source": input.enrollment_source,
+    }
 
     try:
-        if input.enrollment_id:
-            url = f"{COURSE_SERVICE}/course/enrollments/{input.enrollment_id}"
-            data = await get_json(url, headers=headers)
-            if data.get("status") != "active":
-                return InitializeProgressOutput(
-                    success=False,
-                    enrollment_id=input.enrollment_id,
-                    enrollment_status=data.get("status"),
-                    error=f"Enrollment status is {data.get('status')}",
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                body = await resp.json(content_type=None)
+
+                if resp.status in (200, 201):
+                    logger.info(
+                        "Enrollment created/confirmed: enrollment_id=%s, status=%s",
+                        body.get("id"),
+                        body.get("status"),
+                    )
+                    return EnrollInCourseOutput(
+                        success=True,
+                        enrollment_id=body.get("id"),
+                        enrollment_status=body.get("status"),
+                    )
+
+                # Any non-2xx error
+                logger.error(
+                    "enroll_in_course failed %d for student=%d course=%d: %s",
+                    resp.status,
+                    input.student_id,
+                    input.course_id,
+                    body,
                 )
-            return InitializeProgressOutput(
-                success=True,
-                enrollment_id=input.enrollment_id,
-                enrollment_status="active",
-            )
-        else:
-            # Fallback: just confirm course exists
-            course_url = f"{COURSE_SERVICE}/courses/{input.course_id}"
-            await get_json(course_url)
-            return InitializeProgressOutput(success=True)
+                return EnrollInCourseOutput(
+                    success=False,
+                    error=f"HTTP {resp.status}: {body.get('detail', body)}",
+                )
 
     except Exception as e:
-        logger.warning(
-            "initialize_course_progress warning for student=%d course=%d: %s",
+        logger.error(
+            "enroll_in_course failed for student=%d course=%d: %s",
             input.student_id,
             input.course_id,
             e,
+            exc_info=True,
         )
-        return InitializeProgressOutput(success=False, error=str(e))
+        return EnrollInCourseOutput(success=False, error=str(e))
 
 
 @activity.defn(name="fetch_course_modules")
@@ -172,18 +192,18 @@ async def fetch_course_modules(
 
 COURSE_ACTIVITIES = [
     fetch_course_details,
-    initialize_course_progress,
+    enroll_in_course,
     fetch_course_modules,
 ]
 
 __all__ = [
     "fetch_course_details",
-    "initialize_course_progress",
+    "enroll_in_course",
     "fetch_course_modules",
     "FetchCourseInput",
     "FetchCourseOutput",
-    "InitializeProgressInput",
-    "InitializeProgressOutput",
+    "EnrollInCourseInput",
+    "EnrollInCourseOutput",
     "FetchCourseModulesInput",
     "FetchCourseModulesOutput",
     "COURSE_ACTIVITIES",

@@ -17,12 +17,12 @@ from core_service.temporal.activities.user_activities import (
 )
 from core_service.temporal.activities.course_activities import (
     fetch_course_details,
-    initialize_course_progress,
+    enroll_in_course,
     fetch_course_modules,
     FetchCourseInput,
     FetchCourseOutput,
-    InitializeProgressInput,
-    InitializeProgressOutput,
+    EnrollInCourseInput,
+    EnrollInCourseOutput,
     FetchCourseModulesInput,
     FetchCourseModulesOutput,
     COURSE_ACTIVITIES,
@@ -76,12 +76,12 @@ __all__ = [
     "ValidateUserEnrollmentOutput",
     # Course
     "fetch_course_details",
-    "initialize_course_progress",
+    "enroll_in_course",
     "fetch_course_modules",
     "FetchCourseInput",
     "FetchCourseOutput",
-    "InitializeProgressInput",
-    "InitializeProgressOutput",
+    "EnrollInCourseInput",
+    "EnrollInCourseOutput",
     "FetchCourseModulesInput",
     "FetchCourseModulesOutput",
     # Notification

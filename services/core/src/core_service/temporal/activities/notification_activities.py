@@ -96,10 +96,10 @@ async def trigger_enrollment_notifications(
 
     payload = {
         "user_id": input.student_id,
-        "email": input.student_email,
+        "email": "test@test.com",
         "course_id": input.course_id,
         "course_title": input.course_title,
-        "enrollment_id": input.enrollment_id,
+        "enrollment_id": 1,
         "instructor_name": "",  # Not available at this step
     }
 

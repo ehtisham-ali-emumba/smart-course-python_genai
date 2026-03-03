@@ -40,16 +40,17 @@ async def handle_enrollment_event(topic: str, envelope: EventEnvelope) -> None:
         envelope.event_id,
     )
 
-    if envelope.event_type != "enrollment.created":
+    if envelope.event_type != "enrollment.requested":
         logger.debug("Ignoring event type: %s", envelope.event_type)
         return
 
     payload = envelope.payload
     student_id = payload.get("student_id")
     course_id = payload.get("course_id")
-    enrollment_id = payload.get("enrollment_id")  # ← ADD
     course_title = payload.get("course_title", f"Course {course_id}")
     student_email = payload.get("email", "")
+    payment_amount = payload.get("payment_amount", 0)
+    enrollment_source = payload.get("enrollment_source", "web")
 
     if not student_id or not course_id:
         logger.error("Invalid enrollment event payload: %s", payload)
@@ -71,7 +72,8 @@ async def handle_enrollment_event(topic: str, envelope: EventEnvelope) -> None:
             course_id=course_id,
             course_title=course_title,
             student_email=student_email,
-            enrollment_id=enrollment_id,  # ← ADD
+            payment_amount=payment_amount,
+            enrollment_source=enrollment_source,
         )
 
         # Start workflow (non-blocking - workflow runs asynchronously)

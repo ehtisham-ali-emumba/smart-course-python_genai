@@ -16,10 +16,10 @@ with workflow.unsafe.imports_passed_through():
         ValidateUserEnrollmentInput,
         # Course activities
         fetch_course_details,
-        initialize_course_progress,
+        enroll_in_course,
         fetch_course_modules,
         FetchCourseInput,
-        InitializeProgressInput,
+        EnrollInCourseInput,
         FetchCourseModulesInput,
         # Notification activities
         trigger_enrollment_notifications,
@@ -35,8 +35,8 @@ class EnrollmentWorkflowInput:
     course_id: int
     course_title: str
     student_email: str
-    enrollment_id: int | None = None  # ← ADD THIS
-    enrollment_timestamp: str | None = None
+    payment_amount: float = 0
+    enrollment_source: str = "web"
 
 
 @dataclass
@@ -71,12 +71,8 @@ class EnrollmentWorkflow:
     1. Validate user can enroll
     2. Fetch user details
     3. Fetch course details
-    4. Initialize progress tracking
+    4. Enroll in course (verifies existing enrollment or creates new one)
     5. Trigger enrollment notifications (email + in-app via notification-service)
-
-    Each step is an activity that makes an HTTP call to a microservice.
-    If any step fails, the workflow knows exactly which step failed
-    and can be retried or handled appropriately.
     """
 
     def __init__(self):
@@ -106,10 +102,8 @@ class EnrollmentWorkflow:
             # Step 3: Fetch course details
             await self._fetch_course_details(input.course_id, input.course_title)
 
-            # Step 4: Initialize progress tracking
-            await self._initialize_progress(
-                input.student_id, input.course_id, input.enrollment_id
-            )
+            # Step 4: Create enrollment in course-service
+            await self._enroll_in_course(input)
 
             # Step 5: Trigger enrollment notifications (email + in-app)
             # The notifications/enrollment endpoint handles both via Celery tasks
@@ -234,19 +228,18 @@ class EnrollmentWorkflow:
             )
             self.steps_completed.append(f"{step_name}_fallback")
 
-    async def _initialize_progress(
-        self, student_id: int, course_id: int, enrollment_id: int | None
-    ) -> None:
-        """Step 4: Initialize progress tracking."""
-        step_name = "initialize_progress"
+    async def _enroll_in_course(self, input: EnrollmentWorkflowInput) -> None:
+        """Step 4: Create enrollment in course-service (idempotent — 400 already-enrolled treated as success)."""
+        step_name = "enroll_in_course"
         workflow.logger.info("Step: %s", step_name)
 
         result = await workflow.execute_activity(
-            initialize_course_progress,
-            InitializeProgressInput(
-                student_id=student_id,
-                course_id=course_id,
-                enrollment_id=enrollment_id,
+            enroll_in_course,
+            EnrollInCourseInput(
+                student_id=input.student_id,
+                course_id=input.course_id,
+                payment_amount=input.payment_amount,
+                enrollment_source=input.enrollment_source,
             ),
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=DEFAULT_RETRY_POLICY,
@@ -255,12 +248,12 @@ class EnrollmentWorkflow:
         if result.success:
             self.steps_completed.append(step_name)
         else:
-            # Progress initialization is non-critical for workflow completion
+            # Non-critical — enrollment may already exist outside this flow
             workflow.logger.warning(
-                "initialize_progress failed (non-critical): %s",
+                "enroll_in_course failed (non-critical): %s",
                 result.error,
             )
-            self.steps_completed.append(f"{step_name}_skipped")
+            self.steps_completed.append(f"{step_name}_failed")
 
     async def _send_enrollment_notifications(
         self, input: EnrollmentWorkflowInput
