@@ -170,6 +170,7 @@ services:
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic enrollment.events --partitions 3 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic progress.events --partitions 3 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification.events --partitions 1 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic ai.events --partitions 3 --replication-factor 1 &&
         echo 'All Kafka topics created.'
     networks:
       - smartcourse-network
@@ -311,6 +312,30 @@ services:
     networks:
       - smartcourse-network
 
+  ai-service:
+    build:
+      context: .
+      dockerfile: services/ai-service/Dockerfile
+    container_name: smartcourse-ai-service
+    volumes:
+      - ./services/ai-service/src:/app/src:ro
+    env_file:
+      - ./.env
+      - ./services/ai-service/.env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - smartcourse-network
+
   celery-worker:
     build:
       context: .
@@ -368,6 +393,7 @@ services:
       - course-service
       - notification-service
       - core-service
+      - ai-service
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
       interval: 15s
