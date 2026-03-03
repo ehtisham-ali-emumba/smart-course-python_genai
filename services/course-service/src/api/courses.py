@@ -45,8 +45,6 @@ async def create_course(
                 course_id=course["id"],
                 instructor_id=instructor_id,
                 title=course["title"],
-                slug=course["slug"],
-                category=course.get("category"),
             ).model_dump(),
             key=str(course["id"]),
         )
@@ -89,6 +87,29 @@ async def list_my_courses(
         skip=skip,
         limit=limit,
     )
+
+
+@router.get("/my-courses/{course_id}", response_model=CourseResponse)
+async def get_my_course(
+    course_id: int,
+    instructor_id: int = Depends(require_instructor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate instructor ownership of a single course.
+
+    Returns 200 + course data only if the course exists and belongs to the
+    requesting instructor.  Returns 404 otherwise.
+    Primarily used by internal services (e.g. AI service) to confirm
+    instructor ownership before dispatching generation tasks.
+    """
+    service = CourseService(db)
+    course = await service.get_instructor_course(course_id, instructor_id)
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found or you do not own it",
+        )
+    return CourseResponse(**course)
 
 
 @router.get("/{course_id}", response_model=CourseResponse)

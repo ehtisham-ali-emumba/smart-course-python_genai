@@ -1,3 +1,6 @@
+from datetime import date
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,11 +87,11 @@ async def verify_certificate(
     if not cert:
         return CertificateVerifyResponse(is_valid=False)
     return CertificateVerifyResponse(
-        is_valid=not cert.is_revoked,
-        certificate_number=cert.certificate_number,
-        issue_date=cert.issue_date,
-        grade=cert.grade,
-        is_revoked=cert.is_revoked,
+        is_valid=not cast(bool, cert.is_revoked),
+        certificate_number=cast(str, cert.certificate_number),
+        issue_date=cast(date, cert.issue_date),
+        grade=cast(str, cert.grade),
+        is_revoked=cast(bool, cert.is_revoked),
     )
 
 

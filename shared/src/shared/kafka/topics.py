@@ -11,4 +11,5 @@ class Topics(str, Enum):
     ENROLLMENT = "enrollment.events"
     PROGRESS = "progress.events"
     NOTIFICATION = "notification.events"
-    CERTIFICATE = "certificate.events"    AI = "ai.events"
+    CERTIFICATE = "certificate.events"
+    AI = "ai.events"

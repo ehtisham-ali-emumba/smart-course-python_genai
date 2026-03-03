@@ -25,7 +25,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pydantic>=2.5.0 \
     pydantic-settings>=2.1.0 \
     httpx>=0.26.0 \
-    structlog>=24.1.0
+    structlog>=24.1.0 \
+    openai>=1.40.0 \
+    PyMuPDF>=1.24.0
 
 COPY services/ai-service/src/ ./src/
 

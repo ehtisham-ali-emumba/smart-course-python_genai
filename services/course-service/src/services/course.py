@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +46,7 @@ class CourseService:
 
         # 2. Fallback to DB
         course = await self.course_repo.get_by_id(course_id)
-        if course and course.is_deleted:
+        if course and bool(course.is_deleted):
             return None
 
         # 3. Store in cache and return normalized dict
@@ -91,11 +91,25 @@ class CourseService:
         """List all courses by an instructor. No cache — instructor-specific, low reuse.
         Returns (list[dict], total) for consistent API handling.
         """
-        courses = await self.course_repo.get_by_instructor(
-            instructor_id, skip=skip, limit=limit
-        )
+        courses = await self.course_repo.get_by_instructor(instructor_id, skip=skip, limit=limit)
         total = await self.course_repo.count_by_instructor(instructor_id)
         return [_course_to_dict(c) for c in courses], total
+
+    async def get_instructor_course(self, course_id: int, instructor_id: int) -> dict | None:
+        """Validate that a single course exists and is owned by the given instructor.
+
+        Used by internal services (e.g. AI service) to confirm instructor
+        ownership before dispatching generation tasks.
+
+        Returns:
+            Course dict on success, None if not found / not owned / deleted.
+        """
+        course = await self.course_repo.get_by_id(course_id)
+        if not course or bool(course.is_deleted):
+            return None
+        if cast(int, course.instructor_id) != instructor_id:
+            return None
+        return _course_to_dict(course)
 
     # ── WRITES (with cache invalidation) ──────────────────────────
 
@@ -124,9 +138,9 @@ class CourseService:
         Returns dict or None for consistent API handling.
         """
         course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
+        if not course or bool(course.is_deleted):
             return None
-        if course.instructor_id != instructor_id:
+        if cast(int, course.instructor_id) != instructor_id:
             raise PermissionError("You do not own this course")
 
         update_data = data.model_dump(exclude_unset=True, mode="python")
@@ -150,13 +164,13 @@ class CourseService:
         Returns dict or None for consistent API handling.
         """
         course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
+        if not course or bool(course.is_deleted):
             return None
-        if course.instructor_id != instructor_id:
+        if cast(int, course.instructor_id) != instructor_id:
             raise PermissionError("You do not own this course")
 
-        update_data = {"status": data.status}
-        if data.status == "published" and course.status != "published":
+        update_data: dict[str, Any] = {"status": data.status}
+        if data.status == "published" and str(course.status) != "published":
             update_data["published_at"] = datetime.utcnow()
 
         result = await self.course_repo.update(course_id, update_data)
@@ -170,9 +184,9 @@ class CourseService:
     async def delete_course(self, course_id: int, instructor_id: int) -> bool:
         """Soft-delete a course. Invalidates all course caches."""
         course = await self.course_repo.get_by_id(course_id)
-        if not course or course.is_deleted:
+        if not course or bool(course.is_deleted):
             return False
-        if course.instructor_id != instructor_id:
+        if cast(int, course.instructor_id) != instructor_id:
             raise PermissionError("You do not own this course")
 
         await self.course_repo.soft_delete(course_id)
