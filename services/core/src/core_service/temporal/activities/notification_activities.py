@@ -48,36 +48,6 @@ class SendInAppNotificationOutput:
     error: str | None = None
 
 
-@dataclass
-class SendCoursePublishedNotificationInput:
-    course_id: int
-    course_title: str
-    instructor_id: int
-    affected_student_ids: list[int]
-    event: str = "published"
-
-
-@dataclass
-class SendCoursePublishedNotificationOutput:
-    success: bool
-    students_notified: int = 0
-    error: str | None = None
-
-
-@dataclass
-class SendInstructorNotificationInput:
-    instructor_id: int
-    course_id: int
-    course_title: str
-    rag_indexed: bool = True
-
-
-@dataclass
-class SendInstructorNotificationOutput:
-    success: bool
-    error: str | None = None
-
-
 # ── Activities ─────────────────────────────────────────────────────────────────
 
 
@@ -145,85 +115,17 @@ async def send_in_app_notification(
         return SendInAppNotificationOutput(success=False, error=str(e))
 
 
-@activity.defn(name="send_course_published_notification")
-async def send_course_published_notification(
-    input: SendCoursePublishedNotificationInput,
-) -> SendCoursePublishedNotificationOutput:
-    """
-    POST http://notification-service:8005/notifications/course
-    Notifies all enrolled students that the course is now published.
-    Uses CourseNotificationRequest schema with affected_user_ids.
-    """
-    url = f"{NOTIFICATION_SERVICE}/notifications/course"
-    headers = {"X-User-ID": str(input.instructor_id)}
-
-    payload = {
-        "course_id": input.course_id,
-        "course_title": input.course_title,
-        "event": input.event,
-        "affected_user_ids": input.affected_student_ids,
-    }
-
-    try:
-        resp = await post_json(url, payload, headers=headers)
-        return SendCoursePublishedNotificationOutput(
-            success=resp.get("success", True),
-            students_notified=len(input.affected_student_ids),
-        )
-    except Exception as e:
-        logger.warning("send_course_published_notification failed: %s", e)
-        return SendCoursePublishedNotificationOutput(success=False, error=str(e))
-
-
-@activity.defn(name="send_instructor_course_published_notification")
-async def send_instructor_course_published_notification(
-    input: SendInstructorNotificationInput,
-) -> SendInstructorNotificationOutput:
-    """
-    POST http://notification-service:8005/notifications/course
-    Notifies the instructor their course is live (and whether RAG was indexed).
-    """
-    url = f"{NOTIFICATION_SERVICE}/notifications/course"
-    headers = {"X-User-ID": str(input.instructor_id)}
-
-    rag_note = (
-        " Course content has been indexed for AI Tutor." if input.rag_indexed else ""
-    )
-    payload = {
-        "course_id": input.course_id,
-        "course_title": input.course_title,
-        "event": "published",
-        "message": f"Your course '{input.course_title}' is now live and available to students.{rag_note}",
-        "affected_user_ids": [input.instructor_id],
-    }
-
-    try:
-        resp = await post_json(url, payload, headers=headers)
-        return SendInstructorNotificationOutput(success=resp.get("success", True))
-    except Exception as e:
-        logger.warning("send_instructor_course_published_notification failed: %s", e)
-        return SendInstructorNotificationOutput(success=False, error=str(e))
-
-
 NOTIFICATION_ACTIVITIES = [
     trigger_enrollment_notifications,
     send_in_app_notification,
-    send_course_published_notification,
-    send_instructor_course_published_notification,
 ]
 
 __all__ = [
     "trigger_enrollment_notifications",
     "send_in_app_notification",
-    "send_course_published_notification",
-    "send_instructor_course_published_notification",
     "TriggerEnrollmentNotificationsInput",
     "TriggerEnrollmentNotificationsOutput",
     "SendInAppNotificationInput",
     "SendInAppNotificationOutput",
-    "SendCoursePublishedNotificationInput",
-    "SendCoursePublishedNotificationOutput",
-    "SendInstructorNotificationInput",
-    "SendInstructorNotificationOutput",
     "NOTIFICATION_ACTIVITIES",
 ]
