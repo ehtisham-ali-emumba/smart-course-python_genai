@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, status
 
-from ai_service.api.dependencies import require_instructor
+from ai_service.api.dependencies import require_instructor, get_index_service
 from ai_service.schemas.index import (
     BuildIndexRequest,
     IndexBuildResponse,
@@ -11,7 +11,6 @@ from ai_service.schemas.index import (
 from ai_service.services.index import IndexService
 
 router = APIRouter()
-index_service = IndexService()
 
 
 @router.post(
@@ -23,6 +22,7 @@ async def build_course_index(
     course_id: int,
     request: BuildIndexRequest | None = None,
     user_id: int = Depends(require_instructor),
+    index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for entire course.
 
@@ -30,14 +30,13 @@ async def build_course_index(
         course_id: Course ID from path parameter
         request: Optional index build request with force_rebuild flag
         user_id: Authenticated instructor user ID (from dependency)
+        index_service: IndexService from dependency injection
 
     Returns:
         IndexBuildResponse with build status
     """
     if request is None:
         request = BuildIndexRequest(force_rebuild=False)
-    # TODO: Validate course exists in course_content collection
-    # TODO: Kick off async indexing job
     return await index_service.build_course_index(course_id, request)
 
 
@@ -51,6 +50,7 @@ async def build_module_index(
     course_id: int,
     request: BuildIndexRequest | None = None,
     user_id: int = Depends(require_instructor),
+    index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for a single module.
 
@@ -59,14 +59,13 @@ async def build_module_index(
         course_id: Course ID (query parameter, required)
         request: Optional index build request with force_rebuild flag
         user_id: Authenticated instructor user ID (from dependency)
+        index_service: IndexService from dependency injection
 
     Returns:
         IndexBuildResponse with build status
     """
     if request is None:
         request = BuildIndexRequest(force_rebuild=False)
-    # TODO: Validate course and module exist
-    # TODO: Kick off async indexing job scoped to the module
     return await index_service.build_module_index(course_id, module_id, request)
 
 
@@ -78,17 +77,18 @@ async def build_module_index(
 async def get_course_index_status(
     course_id: int,
     user_id: int = Depends(require_instructor),
+    index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a course.
 
     Args:
         course_id: Course ID from path parameter
         user_id: Authenticated instructor user ID (from dependency)
+        index_service: IndexService from dependency injection
 
     Returns:
         IndexStatusResponse with index status
     """
-    # TODO: Query rag_index_status table
     return await index_service.get_course_status(course_id)
 
 
@@ -101,6 +101,7 @@ async def get_module_index_status(
     module_id: str,
     course_id: int,
     user_id: int = Depends(require_instructor),
+    index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a module.
 
@@ -108,9 +109,9 @@ async def get_module_index_status(
         module_id: Module ID from path parameter (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
         user_id: Authenticated instructor user ID (from dependency)
+        index_service: IndexService from dependency injection
 
     Returns:
         IndexStatusResponse with index status
     """
-    # TODO: Query rag_index_status table filtered by module
     return await index_service.get_module_status(course_id, module_id)

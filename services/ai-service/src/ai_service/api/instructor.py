@@ -10,6 +10,7 @@ from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
 from ai_service.clients.resource_extractor import ResourceTextExtractor
+from ai_service.services.content_extractor import ContentExtractor
 from ai_service.schemas.instructor import (
     GenerateSummaryRequest,
     GenerateSummaryResponse,
@@ -39,9 +40,10 @@ def get_instructor_service() -> InstructorService:
     openai_client = OpenAIClient()
     course_client = CourseServiceClient()
     resource_extractor = ResourceTextExtractor()
+    content_extractor = ContentExtractor(repo, resource_extractor)
     status_tracker = GenerationStatusTracker(redis)
 
-    return InstructorService(repo, openai_client, course_client, resource_extractor, status_tracker)
+    return InstructorService(repo, openai_client, course_client, content_extractor, status_tracker)
 
 
 @router.post(

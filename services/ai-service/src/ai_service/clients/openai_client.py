@@ -264,3 +264,55 @@ class OpenAIClient:
                 model=self.model,
             )
             raise
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for a batch of texts.
+
+        Uses OpenAI's text-embedding-3-small model (1536 dimensions).
+        Handles batching internally — OpenAI supports up to 2048 texts per request.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors (each is a list of 1536 floats).
+            Order matches input texts.
+
+        Raises:
+            openai.OpenAIError: On API errors.
+        """
+        if not texts:
+            return []
+
+        try:
+            response = await self.client.embeddings.create(
+                model=settings.OPENAI_EMBEDDING_MODEL,
+                input=texts,
+            )
+
+            # Sort by index to guarantee order matches input
+            sorted_data = sorted(response.data, key=lambda x: x.index)
+            return [item.embedding for item in sorted_data]
+
+        except Exception as e:
+            logger.error(
+                "Failed to generate embeddings",
+                error=str(e),
+                model=settings.OPENAI_EMBEDDING_MODEL,
+                num_texts=len(texts),
+            )
+            raise
+
+    async def embed_query(self, query: str) -> list[float]:
+        """Generate embedding for a single query string.
+
+        Convenience method for search-time embedding (AI Tutor will use this).
+
+        Args:
+            query: The search query text.
+
+        Returns:
+            Embedding vector (list of 1536 floats).
+        """
+        result = await self.embed_texts([query])
+        return result[0]

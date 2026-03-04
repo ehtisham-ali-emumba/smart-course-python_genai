@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
-from ai_service.clients.resource_extractor import ResourceTextExtractor
+from ai_service.services.content_extractor import ContentExtractor
 from ai_service.schemas.instructor import (
     GenerateSummaryRequest,
     GenerateSummaryResponse,
@@ -32,7 +32,7 @@ class InstructorService:
         repo: CourseContentRepository,
         openai_client: OpenAIClient,
         course_client: CourseServiceClient,
-        resource_extractor: ResourceTextExtractor,
+        content_extractor: ContentExtractor,
         status_tracker: GenerationStatusTracker,
     ):
         """Initialize instructor service with dependencies.
@@ -41,13 +41,13 @@ class InstructorService:
             repo: CourseContentRepository for reading course data
             openai_client: OpenAIClient for LLM calls
             course_client: CourseServiceClient for persistence
-            resource_extractor: ResourceTextExtractor for PDF extraction
+            content_extractor: ContentExtractor for centralized content fetching
             status_tracker: GenerationStatusTracker for Redis-based status tracking
         """
         self.repo = repo
         self.openai_client = openai_client
         self.course_client = course_client
-        self.resource_extractor = resource_extractor
+        self.content_extractor = content_extractor
         self.status_tracker = status_tracker
 
     async def _validate_course_ownership_and_module(
@@ -158,38 +158,16 @@ class InstructorService:
             # ✅ Mark IN_PROGRESS before doing any work
             await self.status_tracker.set_in_progress(course_id, module_id, "summary")
 
-            # Fetch module and lessons from MongoDB
-            context_data = await self.repo.get_module_with_lessons(
+            # Extract all content (MongoDB + PDFs) via centralized extractor
+            content = await self.content_extractor.extract_module_content(
                 course_id, module_id, request.source_lesson_ids
             )
-            if not context_data:
-                logger.error(
-                    "Module not found for summary generation",
-                    course_id=course_id,
-                    module_id=module_id,
-                )
+            if not content:
                 await self.status_tracker.set_failed(
                     course_id, module_id, "summary", "Module not found"
                 )
                 return
-
-            # Extract PDF text from lesson resources
-            pdf_texts = await self.resource_extractor.extract_text_from_lessons(
-                context_data["lessons"]
-            )
-
-            # Build enriched context with PDF content inline
-            sections = [
-                f"## Module: {context_data['module_title']}\n{context_data['module_description']}"
-            ]
-            for lesson in context_data["lessons"]:
-                lesson_id = lesson["lesson_id"]
-                section = f"### Lesson: {lesson['title']}\n{lesson.get('text_content', '')}"
-                if lesson_id in pdf_texts:
-                    section += f"\n\n#### PDF Resources:\n{pdf_texts[lesson_id]}"
-                sections.append(section)
-
-            combined_text = "\n\n".join(sections)
+            combined_text = content["combined_text"]
 
             # Call OpenAI to generate summary
             generated = await self.openai_client.generate_summary(
@@ -314,38 +292,16 @@ class InstructorService:
             # ✅ Mark IN_PROGRESS before doing any work
             await self.status_tracker.set_in_progress(course_id, module_id, "quiz")
 
-            # Fetch module and lessons from MongoDB
-            context_data = await self.repo.get_module_with_lessons(
+            # Extract all content (MongoDB + PDFs) via centralized extractor
+            content = await self.content_extractor.extract_module_content(
                 course_id, module_id, request.source_lesson_ids
             )
-            if not context_data:
-                logger.error(
-                    "Module not found for quiz generation",
-                    course_id=course_id,
-                    module_id=module_id,
-                )
+            if not content:
                 await self.status_tracker.set_failed(
                     course_id, module_id, "quiz", "Module not found"
                 )
                 return
-
-            # Extract PDF text from lesson resources
-            pdf_texts = await self.resource_extractor.extract_text_from_lessons(
-                context_data["lessons"]
-            )
-
-            # Build enriched context with PDF content inline
-            sections = [
-                f"## Module: {context_data['module_title']}\n{context_data['module_description']}"
-            ]
-            for lesson in context_data["lessons"]:
-                lesson_id = lesson["lesson_id"]
-                section = f"### Lesson: {lesson['title']}\n{lesson.get('text_content', '')}"
-                if lesson_id in pdf_texts:
-                    section += f"\n\n#### PDF Resources:\n{pdf_texts[lesson_id]}"
-                sections.append(section)
-
-            combined_text = "\n\n".join(sections)
+            combined_text = content["combined_text"]
 
             # Convert question types from enums to strings
             question_types = [qt.value for qt in request.question_types]

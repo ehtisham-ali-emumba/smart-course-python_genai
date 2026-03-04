@@ -9,25 +9,36 @@ from ai_service.api.router import router
 from ai_service.config import settings
 from ai_service.core.mongodb import connect_mongodb, close_mongodb
 from ai_service.core.redis import connect_redis, close_redis, get_redis
+from ai_service.repositories.vector_store import VectorStoreRepository
+from ai_service.api.dependencies import set_vector_store
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Module-level reference for cleanup
+_vector_store: VectorStoreRepository | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown."""
+    global _vector_store
+
     await connect_mongodb(settings.MONGODB_URL, settings.MONGODB_DB_NAME)
     await connect_redis(settings.REDIS_URL)
 
-    logger.info("AI Service startup complete")
-    # TODO: Initialize Kafka producer
-    # TODO: Initialize Qdrant client
-    # TODO: Initialize LLM client
+    # Initialize Qdrant vector store
+    _vector_store = VectorStoreRepository()
+    await _vector_store.connect()
+    set_vector_store(_vector_store)
+
+    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant)")
 
     yield
 
     logger.info("AI Service shutting down")
+    if _vector_store:
+        await _vector_store.close()
     await close_redis()
     await close_mongodb()
 
@@ -54,10 +65,19 @@ async def health_check():
         except Exception:
             pass
 
+    qdrant_ok = False
+    if _vector_store and _vector_store.client:
+        try:
+            await _vector_store.client.get_collections()
+            qdrant_ok = True
+        except Exception:
+            pass
+
     return {
         "status": "ok",
         "service": "ai-service",
         "dependencies": {
             "redis": "connected" if redis_ok else "disconnected",
+            "qdrant": "connected" if qdrant_ok else "disconnected",
         },
     }
