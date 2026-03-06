@@ -78,7 +78,7 @@ async def handle_enrollment_event(topic: str, envelope: EventEnvelope) -> None:
 
         # Start workflow (non-blocking - workflow runs asynchronously)
         # Using a deterministic workflow ID allows deduplication
-        workflow_id = f"enrollment-{student_id}-{course_id}-{envelope.event_id}"
+        workflow_id = f"enrollment-std{student_id}-crs{course_id}-{envelope.event_id}"
 
         handle = await client.start_workflow(
             EnrollmentWorkflow.run,
