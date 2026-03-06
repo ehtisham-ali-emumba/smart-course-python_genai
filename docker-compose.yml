@@ -71,7 +71,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 && kafka-broker-api-versions --bootstrap-server kafka:29092"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -237,6 +237,7 @@ services:
       context: .
       dockerfile: services/user-service/Dockerfile
     container_name: smartcourse-user-service
+    restart: on-failure
     # No ports exposed to host — only accessible through API Gateway
     env_file:
       - ./.env
@@ -250,6 +251,8 @@ services:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - smartcourse-network
 
@@ -258,6 +261,7 @@ services:
       context: .
       dockerfile: services/course-service/Dockerfile
     container_name: smartcourse-course-service
+    restart: on-failure
     volumes:
       # Mount src for live code changes (avoids rebuild)
       - ./services/course-service/src:/app/src:ro
@@ -276,6 +280,8 @@ services:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - smartcourse-network
 
@@ -284,6 +290,7 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     container_name: smartcourse-notification-service
+    restart: on-failure
     # No ports exposed to host — only accessible through API Gateway
     env_file:
       - ./.env
@@ -305,12 +312,15 @@ services:
       context: .
       dockerfile: services/core/Dockerfile
     container_name: smartcourse-core-service
+    restart: on-failure
     env_file:
       - ./.env
       - ./services/core/.env
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       schema-registry:
         condition: service_healthy
       rabbitmq:
@@ -332,6 +342,7 @@ services:
       context: .
       dockerfile: services/ai-service/Dockerfile
     container_name: smartcourse-ai-service
+    restart: on-failure
     volumes:
       - ./services/ai-service/src:/app/src:ro
     env_file:
@@ -358,6 +369,7 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     container_name: smartcourse-celery-worker
+    restart: on-failure
     command: >
       celery -A notification_service.worker:celery_app worker
       --loglevel=info
