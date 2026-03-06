@@ -316,3 +316,49 @@ class OpenAIClient:
         """
         result = await self.embed_texts([query])
         return result[0]
+
+    async def chat_completion(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ) -> str:
+        """Generate a chat completion response.
+
+        Used by the AI Tutor for conversational responses.
+        Unlike generate_summary/quiz, this returns free-text (not structured JSON).
+
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys.
+                      Should include system, user, and optionally assistant messages.
+            temperature: Sampling temperature (0.0-2.0). Higher = more creative.
+                         Default 0.7 for balanced tutoring responses.
+            max_tokens: Maximum tokens in the response. Default 1024.
+
+        Returns:
+            The assistant's response text.
+
+        Raises:
+            openai.OpenAIError: On API errors.
+        """
+        try:
+            completion = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+            response = completion.choices[0].message.content
+            if response is None:
+                raise ValueError("OpenAI returned empty response")
+            return response
+
+        except Exception as e:
+            logger.error(
+                "Failed to generate chat completion",
+                error=str(e),
+                model=self.model,
+                num_messages=len(messages),
+            )
+            raise

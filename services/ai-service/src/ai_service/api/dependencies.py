@@ -5,6 +5,7 @@ from fastapi import HTTPException, Request, status
 from ai_service.services.index import IndexService
 from ai_service.services.content_extractor import ContentExtractor
 from ai_service.services.text_chunker import TextChunker
+from ai_service.services.tutor import TutorService
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.repositories.vector_store import VectorStoreRepository
@@ -97,3 +98,20 @@ def get_index_service() -> IndexService:
         vector_store=_vector_store,
         status_tracker=status_tracker,
     )
+
+
+# Module-level reference for tutor service singleton
+_tutor_service: TutorService | None = None
+
+
+def set_tutor_service(ts: TutorService) -> None:
+    """Called during app startup to set the tutor service singleton."""
+    global _tutor_service
+    _tutor_service = ts
+
+
+def get_tutor_service() -> TutorService:
+    """FastAPI dependency that returns the TutorService singleton."""
+    if _tutor_service is None:
+        raise RuntimeError("TutorService not initialized. Check app startup.")
+    return _tutor_service

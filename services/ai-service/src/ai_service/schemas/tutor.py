@@ -57,6 +57,29 @@ class SendMessageRequest(BaseModel):
     )
 
 
+class RetrievedSource(BaseModel):
+    """A source chunk retrieved from the RAG index."""
+
+    module_title: str
+    lesson_title: str
+    module_id: str
+    lesson_id: str
+    chunk_index: int
+    score: float
+    text_preview: str = Field(
+        ...,
+        description="First 200 chars of the retrieved chunk.",
+    )
+
+
+class SessionScope(BaseModel):
+    """Tracks the active scope of a tutor session."""
+
+    course_id: int
+    module_id: Optional[str] = None
+    lesson_id: Optional[str] = None
+
+
 class MessageResponse(BaseModel):
     """A single message in a tutor conversation."""
 
@@ -66,6 +89,10 @@ class MessageResponse(BaseModel):
     content: str
     module_id: Optional[str] = None
     lesson_id: Optional[str] = None
+    sources: list[RetrievedSource] = Field(
+        default_factory=list,
+        description="RAG sources used to generate this response (assistant messages only).",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
