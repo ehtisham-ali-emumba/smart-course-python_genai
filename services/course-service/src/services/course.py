@@ -181,6 +181,45 @@ class CourseService:
 
         return _course_to_dict(result) if result else None
 
+    async def validate_course_for_publish(self, course_id: int, instructor_id: int) -> dict:
+        """Validate a course is ready for publishing WITHOUT changing DB state.
+
+        Raises ValueError/PermissionError (which can be caught as exceptions) if validation fails.
+        Returns course dict if valid.
+        """
+        course = await self.course_repo.get_by_id(course_id)
+        if not course or bool(course.is_deleted):
+            raise ValueError("Course not found")
+        if cast(int, course.instructor_id) != instructor_id:
+            raise PermissionError("You do not own this course")
+        if str(course.status) == "published":
+            raise ValueError("Course is already published")
+
+        # Validate course has required fields
+        if course.title is None or not str(course.title).strip():
+            raise ValueError("Course must have a title")
+        if course.description is None or not str(course.description).strip():
+            raise ValueError("Course must have a description")
+
+        # TODO: optionally check that course has at least 1 module with content
+        # This can be done via course_content_repo if needed
+
+        return _course_to_dict(course)
+
+    async def force_publish(self, course_id: int) -> dict | None:
+        """Mark course as published (called by internal workflow endpoint).
+
+        This is called by Temporal after RAG indexing completes.
+        """
+        update_data = {
+            "status": "published",
+            "published_at": datetime.utcnow(),
+        }
+        result = await self.course_repo.update(course_id, update_data)
+        await cache_delete(f"course:detail:{course_id}")
+        await cache_delete_pattern("course:published:*")
+        return _course_to_dict(result) if result else None
+
     async def delete_course(self, course_id: int, instructor_id: int) -> bool:
         """Soft-delete a course. Invalidates all course caches."""
         course = await self.course_repo.get_by_id(course_id)

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from core_service.config import core_settings
 from core_service.kafka.enrollment_consumer import run_enrollment_consumer
+from core_service.kafka.course_consumer import run_course_consumer
 from core_service.temporal.common.temporal_client import close_temporal_client
 from core_service.temporal.worker import run_worker_with_retry
 
@@ -35,13 +36,21 @@ async def lifespan(app: FastAPI):
         run_worker_with_retry(),
         name="temporal-worker",
     )
-    consumer_task = asyncio.create_task(
+    enrollment_consumer_task = asyncio.create_task(
         run_enrollment_consumer(),
         name="enrollment-consumer",
     )
-    _background_tasks.extend([worker_task, consumer_task])
+    course_consumer_task = asyncio.create_task(
+        run_course_consumer(),
+        name="course-consumer",
+    )
+    _background_tasks.extend(
+        [worker_task, enrollment_consumer_task, course_consumer_task]
+    )
 
-    logger.info("Background tasks started: temporal-worker, enrollment-consumer")
+    logger.info(
+        "Background tasks started: temporal-worker, enrollment-consumer, course-consumer"
+    )
 
     yield
 

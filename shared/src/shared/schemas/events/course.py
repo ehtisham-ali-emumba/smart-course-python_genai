@@ -41,3 +41,11 @@ class CourseDeletedPayload(BaseModel):
 
     course_id: int
     instructor_id: int
+
+
+class CoursePublishRequestedPayload(BaseModel):
+    """Payload for course.publish_requested event (triggers Temporal workflow)."""
+
+    course_id: int
+    instructor_id: int
+    title: str

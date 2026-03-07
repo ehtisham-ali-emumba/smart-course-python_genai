@@ -14,7 +14,6 @@ class NotificationEventHandlers:
     def __init__(self):
         self._handlers = {
             "user.registered": self._on_user_registered,
-            "course.published": self._on_course_published,
             "enrollment.completed": self._on_enrollment_completed,
             "certificate.issued": self._on_certificate_issued,
         }
@@ -77,23 +76,6 @@ class NotificationEventHandlers:
                 "title": "Welcome to SmartCourse!",
                 "message": f"Hi {p['first_name']}! Start exploring courses.",
                 "notification_type": "welcome",
-            },
-            queue="notification_queue",
-        )
-
-    async def _on_course_published(self, event: EventEnvelope):
-        """Course published → 1 task (instructor notification)"""
-        p = event.payload
-
-        # Task: Notify instructor
-        self._enqueue_task(
-            event_type=event.event_type,
-            task_name="notification_service.tasks.notification.create_in_app_notification",
-            kwargs={
-                "user_id": p["instructor_id"],
-                "title": "Course Published!",
-                "message": f"Your course '{p['title']}' is now live.",
-                "notification_type": "course_published",
             },
             queue="notification_queue",
         )

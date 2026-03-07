@@ -26,6 +26,7 @@ class CoreSettings(BaseSettings):
     USER_SERVICE_URL: str = "http://user-service:8001"
     COURSE_SERVICE_URL: str = "http://course-service:8002"
     NOTIFICATION_SERVICE_URL: str = "http://notification-service:8005"
+    AI_SERVICE_URL: str = "http://smartcourse-ai-service:8009"
     HTTP_TIMEOUT_SECONDS: float = 30.0
 
     # Mock activity settings (for testing/development)

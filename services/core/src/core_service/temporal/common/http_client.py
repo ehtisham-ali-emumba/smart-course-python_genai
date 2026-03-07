@@ -42,3 +42,18 @@ async def post_json(
         async with session.post(url, json=payload, headers=headers or {}) as resp:
             resp.raise_for_status()
             return await resp.json()
+
+
+async def patch_json(
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """
+    Perform a PATCH request with JSON body and return parsed JSON.
+    Raises aiohttp.ClientResponseError on non-2xx.
+    """
+    async with aiohttp.ClientSession(timeout=make_timeout()) as session:
+        async with session.patch(url, json=payload, headers=headers or {}) as resp:
+            resp.raise_for_status()
+            return await resp.json()

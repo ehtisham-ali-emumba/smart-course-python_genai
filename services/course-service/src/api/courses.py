@@ -1,4 +1,5 @@
 from datetime import datetime
+from venv import logger
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from shared.schemas.events.course import (
     CourseCreatedPayload,
     CourseDeletedPayload,
     CoursePublishedPayload,
+    CoursePublishRequestedPayload,
     CourseUpdatedPayload,
 )
 from shared.kafka.producer import EventProducer
@@ -158,7 +160,7 @@ async def update_course(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
-@router.patch("/{course_id}/status", response_model=CourseResponse)
+@router.patch("/{course_id}/status", status_code=status.HTTP_202_ACCEPTED)
 async def update_course_status(
     course_id: int,
     data: CourseStatusUpdate,
@@ -166,27 +168,47 @@ async def update_course_status(
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
-    """Change course status — publish, archive, etc. (owning instructor only)."""
+    """Change course status — publish, archive, etc. (owning instructor only).
+
+    For publish requests: returns 202 Accepted and triggers Temporal workflow via Kafka.
+    For other statuses: returns 200 OK with updated course.
+    """
     service = CourseService(db)
+
+    if data.status == "published":
+        # --- NEW: Publish workflow instead of directly updating DB ---
+        try:
+            course = await service.validate_course_for_publish(course_id, instructor_id)
+            # course is a dict; raises ValueError/PermissionError if invalid
+
+            await producer.publish(
+                Topics.COURSE,
+                "course.publish_requested",
+                CoursePublishRequestedPayload(
+                    course_id=course_id,
+                    instructor_id=instructor_id,
+                    title=course["title"],
+                ).model_dump(),
+                key=str(course_id),
+            )
+
+            return {
+                "message": "Course publish workflow started",
+                "course_id": course_id,
+                "status": "publish_requested",
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        except PermissionError as e:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+    # --- existing behavior for archive/draft and other statuses ---
     try:
         course = await service.update_status(course_id, data, instructor_id)
         if not course:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
 
-        if data.status == "published":
-            published_at = course.get("published_at") or datetime.utcnow()
-            await producer.publish(
-                Topics.COURSE,
-                "course.published",
-                CoursePublishedPayload(
-                    course_id=course_id,
-                    instructor_id=instructor_id,
-                    title=course.get("title", ""),
-                    published_at=str(published_at) if published_at else "",
-                ).model_dump(),
-                key=str(course_id),
-            )
-        elif data.status == "archived":
+        if data.status == "archived":
             await producer.publish(
                 Topics.COURSE,
                 "course.archived",
@@ -197,10 +219,49 @@ async def update_course_status(
                 ).model_dump(),
                 key=str(course_id),
             )
-
+        logger.info("Course %d status updated to %s", course_id, data.status)
         return CourseResponse(**course)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.patch("/{course_id}/internal/publish", response_model=CourseResponse)
+async def internal_publish_course(
+    course_id: int,
+    db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
+):
+    """Internal endpoint — called by core-service Temporal workflow after
+    RAG indexing completes. Marks course as published in DB and fires
+    the course.published event.
+
+    Guarded by X-User-ID / X-User-Role headers (internal services only).
+    """
+    service = CourseService(db)
+    course = await service.get_course(course_id)
+    if not course:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+    result = await service.force_publish(course_id)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to publish course"
+        )
+
+    # Now fire the actual course.published event
+    await producer.publish(
+        Topics.COURSE,
+        "course.published",
+        CoursePublishedPayload(
+            course_id=course_id,
+            instructor_id=result["instructor_id"],
+            title=result.get("title", ""),
+            published_at=str(result.get("published_at", "")),
+        ).model_dump(),
+        key=str(course_id),
+    )
+
+    return CourseResponse(**result)
 
 
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
