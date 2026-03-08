@@ -11,6 +11,7 @@ from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
 from ai_service.services.content_extractor import ContentExtractor
+from ai_service.services.instructor_graphs import build_quiz_graph, build_summary_graph
 from ai_service.schemas.instructor import (
     GenerateSummaryRequest,
     GenerateSummaryResponse,
@@ -135,7 +136,7 @@ class InstructorService:
         )
 
         # Fire background task (no await)
-        asyncio.create_task(self._process_and_save_summary(course_id, module_id, request, user_id))
+        asyncio.create_task(self._run_summary_graph(course_id, module_id, request, user_id))
 
         return GenerateSummaryResponse(
             course_id=course_id,
@@ -146,89 +147,63 @@ class InstructorService:
             message="Summary generation started.",
         )
 
-    async def _process_and_save_summary(
+    async def _run_summary_graph(
         self,
         course_id: int,
         module_id: str,
         request: GenerateSummaryRequest,
         user_id: int,
     ) -> None:
-        """Background task: fetch content, generate summary, persist to course-service."""
+        """Background task: invoke summary generation LangGraph, handle completion/failure."""
         try:
-            # ✅ Mark IN_PROGRESS before doing any work
+            # Mark IN_PROGRESS before starting the graph
             await self.status_tracker.set_in_progress(course_id, module_id, "summary")
 
-            # Extract all content (MongoDB + PDFs) via centralized extractor
-            content = await self.content_extractor.extract_module_content(
-                course_id, module_id, request.source_lesson_ids
-            )
-            if not content:
-                await self.status_tracker.set_failed(
-                    course_id, module_id, "summary", "Module not found"
-                )
-                return
-            combined_text = content["combined_text"]
-
-            # Call OpenAI to generate summary
-            generated = await self.openai_client.generate_summary(
-                combined_text,
-                include_glossary=request.include_glossary,
-                include_key_points=request.include_key_points,
-                include_learning_objectives=request.include_learning_objectives,
-                max_length_words=request.max_length_words,
-                tone=request.tone,
-                language=request.language,
+            # Build and invoke the graph
+            graph = build_summary_graph(
+                self.openai_client,
+                self.course_client,
+                self.content_extractor,
             )
 
-            # Build persistence payload matching course-service SummaryCreate schema
-            payload = {
-                "title": generated.title,
-                "content": {
-                    "summary_text": generated.content.summary_text,
-                    "key_points": generated.content.key_points,
-                    "learning_objectives": generated.content.learning_objectives,
-                    "glossary": [
-                        {"term": g.term, "definition": g.definition}
-                        for g in generated.content.glossary
-                    ],
-                    "difficulty_assessment": (
-                        {
-                            "level": generated.content.difficulty_assessment.level,
-                            "estimated_read_minutes": generated.content.difficulty_assessment.estimated_read_minutes,
-                        }
-                        if generated.content.difficulty_assessment
-                        else None
-                    ),
-                },
-                "is_published": False,
-            }
+            result = await graph.ainvoke(
+                {
+                    "course_id": course_id,
+                    "module_id": module_id,
+                    "user_id": user_id,
+                    "source_lesson_ids": request.source_lesson_ids,
+                    "include_glossary": request.include_glossary,
+                    "include_key_points": request.include_key_points,
+                    "include_learning_objectives": request.include_learning_objectives,
+                    "max_length_words": request.max_length_words,
+                    "tone": request.tone,
+                    "language": request.language,
+                    "retry_count": 0,
+                }
+            )
 
-            # Save via HTTP to course-service
-            result = await self.course_client.save_summary(course_id, module_id, payload, user_id)
-            if result:
-                # ✅ Mark COMPLETED after successful save
+            # Check result: if persisted, mark completed; otherwise mark failed
+            if result.get("persisted"):
                 await self.status_tracker.set_completed(course_id, module_id, "summary")
                 logger.info(
-                    "Summary generated and saved successfully",
+                    "Summary generation graph completed successfully",
                     course_id=course_id,
                     module_id=module_id,
                 )
             else:
-                # ✅ Mark FAILED on save failure
-                await self.status_tracker.set_failed(
-                    course_id, module_id, "summary", "Failed to save to course-service"
-                )
+                error_msg = result.get("error", "Summary generation failed")
+                await self.status_tracker.set_failed(course_id, module_id, "summary", error_msg)
                 logger.warning(
-                    "Summary generated but failed to save to course-service",
+                    "Summary generation graph did not persist",
                     course_id=course_id,
                     module_id=module_id,
+                    error=error_msg,
                 )
 
         except Exception as e:
-            # ✅ Mark FAILED on error
             await self.status_tracker.set_failed(course_id, module_id, "summary", str(e))
             logger.exception(
-                "Error during summary generation",
+                "Summary generation graph encountered an exception",
                 course_id=course_id,
                 module_id=module_id,
                 error=str(e),
@@ -269,7 +244,7 @@ class InstructorService:
         )
 
         # Fire background task (no await)
-        asyncio.create_task(self._process_and_save_quiz(course_id, module_id, request, user_id))
+        asyncio.create_task(self._run_quiz_graph(course_id, module_id, request, user_id))
 
         return GenerateQuizResponse(
             course_id=course_id,
@@ -280,209 +255,68 @@ class InstructorService:
             message="Quiz generation started.",
         )
 
-    async def _process_and_save_quiz(
+    async def _run_quiz_graph(
         self,
         course_id: int,
         module_id: str,
         request: GenerateQuizRequest,
         user_id: int,
     ) -> None:
-        """Background task: fetch content, generate quiz, persist to course-service."""
+        """Background task: invoke quiz generation LangGraph, handle completion/failure."""
         try:
-            # ✅ Mark IN_PROGRESS before doing any work
+            # Mark IN_PROGRESS before starting the graph
             await self.status_tracker.set_in_progress(course_id, module_id, "quiz")
 
-            # Extract all content (MongoDB + PDFs) via centralized extractor
-            content = await self.content_extractor.extract_module_content(
-                course_id, module_id, request.source_lesson_ids
-            )
-            if not content:
-                await self.status_tracker.set_failed(
-                    course_id, module_id, "quiz", "Module not found"
-                )
-                return
-            combined_text = content["combined_text"]
-
-            # Convert question types from enums to strings
-            question_types = [qt.value for qt in request.question_types]
-
-            # Call OpenAI to generate quiz
-            generated = await self.openai_client.generate_quiz(
-                combined_text,
-                num_questions=request.num_questions,
-                difficulty=request.difficulty.value if request.difficulty else None,
-                question_types=question_types,
-                language=request.language,
+            # Build and invoke the graph
+            graph = build_quiz_graph(
+                self.openai_client,
+                self.course_client,
+                self.content_extractor,
             )
 
-            payload = self._build_quiz_payload(generated, request)
+            result = await graph.ainvoke(
+                {
+                    "course_id": course_id,
+                    "module_id": module_id,
+                    "user_id": user_id,
+                    "source_lesson_ids": request.source_lesson_ids,
+                    "num_questions": request.num_questions,
+                    "difficulty": request.difficulty.value if request.difficulty else None,
+                    "question_types": [qt.value for qt in request.question_types],
+                    "language": request.language,
+                    "passing_score": request.passing_score,
+                    "max_attempts": request.max_attempts,
+                    "time_limit_minutes": request.time_limit_minutes,
+                    "retry_count": 0,
+                }
+            )
 
-            # Save via HTTP to course-service
-            result = await self.course_client.save_quiz(course_id, module_id, payload, user_id)
-            if result:
-                # ✅ Mark COMPLETED after successful save
+            # Check result: if persisted, mark completed; otherwise mark failed
+            if result.get("persisted"):
                 await self.status_tracker.set_completed(course_id, module_id, "quiz")
                 logger.info(
-                    "Quiz generated and saved successfully",
+                    "Quiz generation graph completed successfully",
                     course_id=course_id,
                     module_id=module_id,
                 )
             else:
-                # ✅ Mark FAILED on save failure
-                await self.status_tracker.set_failed(
-                    course_id, module_id, "quiz", "Failed to save to course-service"
-                )
+                error_msg = result.get("error", "Quiz generation failed")
+                await self.status_tracker.set_failed(course_id, module_id, "quiz", error_msg)
                 logger.warning(
-                    "Quiz generated but failed to save to course-service",
+                    "Quiz generation graph did not persist",
                     course_id=course_id,
                     module_id=module_id,
+                    error=error_msg,
                 )
 
         except Exception as e:
-            # ✅ Mark FAILED on error
             await self.status_tracker.set_failed(course_id, module_id, "quiz", str(e))
             logger.exception(
-                "Error during quiz generation",
+                "Quiz generation graph encountered an exception",
                 course_id=course_id,
                 module_id=module_id,
                 error=str(e),
             )
-
-    def _build_quiz_payload(self, generated: Any, request: GenerateQuizRequest) -> dict[str, Any]:
-        questions: list[dict[str, Any]] = []
-        for index, question in enumerate(generated.questions, start=1):
-            normalized = self._normalize_generated_question(question, index)
-            if normalized is not None:
-                questions.append(normalized)
-
-        if not questions:
-            raise ValueError("No valid quiz questions generated from AI response")
-
-        title = (generated.title or "Module Quiz").strip()[:300] or "Module Quiz"
-        description = generated.description.strip() if generated.description else None
-
-        return {
-            "title": title,
-            "description": description,
-            "settings": {
-                "passing_score": request.passing_score,
-                "time_limit_minutes": request.time_limit_minutes,
-                "max_attempts": request.max_attempts,
-                "shuffle_questions": True,
-                "shuffle_options": True,
-                "show_correct_answers_after": "completion",
-            },
-            "questions": questions,
-            "is_published": False,
-        }
-
-    def _normalize_generated_question(self, question: Any, index: int) -> dict[str, Any] | None:
-        question_type = question.question_type
-        question_text = (question.question_text or "").strip() or f"Question {index}"
-        explanation = question.explanation.strip() if question.explanation else None
-        hint = question.hint.strip() if question.hint else None
-
-        if question_type == "short_answer":
-            correct_answers = [
-                answer.strip()
-                for answer in (question.correct_answers or [])
-                if isinstance(answer, str) and answer.strip()
-            ]
-            if not correct_answers:
-                logger.warning("Skipping invalid short_answer question with no correct_answers")
-                return None
-
-            return {
-                "order": index,
-                "question_text": question_text,
-                "question_type": "short_answer",
-                "options": None,
-                "correct_answers": correct_answers,
-                "explanation": explanation,
-                "hint": hint,
-            }
-
-        options = []
-        for option in question.options or []:
-            option_text = (option.text or "").strip()
-            if not option_text:
-                continue
-            options.append(
-                {
-                    "option_id": (option.option_id or "").strip(),
-                    "text": option_text,
-                    "is_correct": bool(option.is_correct),
-                }
-            )
-
-        if question_type == "true_false":
-            true_is_correct = True
-            for option in options:
-                option_id = option["option_id"].lower()
-                option_text = option["text"].strip().lower()
-                if option_id == "opt_false" or option_text in {"false", "no"}:
-                    if option["is_correct"]:
-                        true_is_correct = False
-                        break
-                if option_id == "opt_true" or option_text in {"true", "yes"}:
-                    if option["is_correct"]:
-                        true_is_correct = True
-                        break
-
-            normalized_options = [
-                {"option_id": "opt_true", "text": "True", "is_correct": true_is_correct},
-                {"option_id": "opt_false", "text": "False", "is_correct": not true_is_correct},
-            ]
-            return {
-                "order": index,
-                "question_text": question_text,
-                "question_type": "true_false",
-                "options": normalized_options,
-                "correct_answers": None,
-                "explanation": explanation,
-                "hint": hint,
-            }
-
-        if len(options) < 2:
-            logger.warning(
-                "Skipping invalid objective question with insufficient options",
-                question_type=question_type,
-            )
-            return None
-
-        normalized_options = []
-        for option_index, option in enumerate(options):
-            letter = chr(ord("a") + option_index)
-            normalized_options.append(
-                {
-                    "option_id": f"opt_{letter}",
-                    "text": option["text"],
-                    "is_correct": bool(option["is_correct"]),
-                }
-            )
-
-        if question_type == "multiple_choice":
-            first_correct_index = next(
-                (i for i, option in enumerate(normalized_options) if option["is_correct"]),
-                0,
-            )
-            for option_index, option in enumerate(normalized_options):
-                option["is_correct"] = option_index == first_correct_index
-
-        if question_type == "multiple_select" and not any(
-            option["is_correct"] for option in normalized_options
-        ):
-            normalized_options[0]["is_correct"] = True
-
-        return {
-            "order": index,
-            "question_text": question_text,
-            "question_type": question_type,
-            "options": normalized_options,
-            "correct_answers": None,
-            "explanation": explanation,
-            "hint": hint,
-        }
 
     async def get_generation_status(
         self, course_id: int, module_id: str
