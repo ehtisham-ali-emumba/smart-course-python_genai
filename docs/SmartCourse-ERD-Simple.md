@@ -204,7 +204,7 @@ erDiagram
     users ||--o| instructor_profiles : "1-to-1 has profile"
 
     %% Cross-service logical FKs
-    instructor_profiles ||--o{ courses : "1-to-N creates"
+    users ||--o{ courses : "1-to-N creates"
     users ||--o{ enrollments : "1-to-N enrolls"
     courses ||--o{ enrollments : "1-to-N has"
 
@@ -230,7 +230,7 @@ erDiagram
 | From | To | Cardinality | Type | FK Column |
 |---|---|---|---|---|
 | users | instructor_profiles | 1:1 | DB FK | instructor_profiles.user_id → users.id (CASCADE, UNIQUE) |
-| instructor_profiles | courses | 1:N | logical | courses.instructor_id → instructor_profiles.id (cross-service) |
+| users | courses | 1:N | logical | courses.instructor_id → users.id (cross-service) |
 | users | enrollments | 1:N | logical | enrollments.student_id → users.id (cross-service) |
 | courses | enrollments | 1:N | logical | enrollments.course_id → courses.id |
 | enrollments | progress | 1:N | DB FK | progress.enrollment_id → enrollments.id (CASCADE) |
