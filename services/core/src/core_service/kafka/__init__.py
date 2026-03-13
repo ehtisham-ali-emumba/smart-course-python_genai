@@ -1,6 +1,5 @@
-"""Kafka consumers for core-service."""
+"""Kafka module for core-service — deprecated.
 
-from core_service.kafka.enrollment_consumer import run_enrollment_consumer
-
-
-__all__ = ["run_enrollment_consumer"]
+Kafka consumers have been replaced with direct Temporal workflow invocation.
+This module is kept for backward compatibility but no longer used.
+"""

@@ -1,10 +1,22 @@
 from fastapi import HTTPException, Request, status
+from temporalio.client import Client as TemporalClient
 
 from shared.kafka.producer import EventProducer
 
 
 def get_event_producer(request: Request) -> EventProducer:
     return request.app.state.event_producer
+
+
+def get_temporal_client(request: Request) -> TemporalClient:
+    """FastAPI dependency to get the Temporal client from app state."""
+    client = getattr(request.app.state, "temporal_client", None)
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Temporal client not available",
+        )
+    return client
 
 
 def get_current_user_id(request: Request) -> int:

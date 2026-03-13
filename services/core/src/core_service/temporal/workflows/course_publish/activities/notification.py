@@ -7,6 +7,7 @@ from temporalio import activity
 
 from core_service.config import core_settings
 from core_service.temporal.common.http_client import post_json
+from shared.temporal.constants import Activities
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class NotifyInstructorOutput:
 # ── Activities ────────────────────────────────────────────────
 
 
-@activity.defn
+@activity.defn(name=Activities.NOTIFY_INSTRUCTOR_PUBLISH_SUCCESS)
 async def notify_instructor_publish_success(
     input: NotifyInstructorInput,
 ) -> NotifyInstructorOutput:
@@ -77,7 +78,7 @@ async def notify_instructor_publish_success(
         return NotifyInstructorOutput(success=False, error=str(e))
 
 
-@activity.defn
+@activity.defn(name=Activities.NOTIFY_INSTRUCTOR_PUBLISH_FAILURE)
 async def notify_instructor_publish_failure(
     input: NotifyInstructorInput,
 ) -> NotifyInstructorOutput:

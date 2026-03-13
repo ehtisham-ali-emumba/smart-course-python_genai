@@ -1,13 +1,19 @@
 """Enrollment workflow that orchestrates student enrollment process."""
 
-from dataclasses import dataclass
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-# Import activity stubs - these are executed by the worker
+# All non-stdlib imports must go through imports_passed_through() because
+# importing `shared.*` triggers shared/__init__.py which pulls in boto3/S3,
+# and boto3 → urllib3 → http.client which is restricted by the Temporal sandbox.
 with workflow.unsafe.imports_passed_through():
+    from shared.temporal.constants import Workflows
+    from shared.temporal.inputs import (
+        EnrollmentWorkflowInput,
+        EnrollmentWorkflowOutput,
+    )
     from core_service.temporal.workflows.enrollment.activities import (
         # User activities
         fetch_user_details,
@@ -27,31 +33,6 @@ with workflow.unsafe.imports_passed_through():
     )
 
 
-@dataclass
-class EnrollmentWorkflowInput:
-    """Input for the enrollment workflow."""
-
-    student_id: int
-    course_id: int
-    course_title: str
-    student_email: str
-    payment_amount: float = 0
-    enrollment_source: str = "web"
-
-
-@dataclass
-class EnrollmentWorkflowOutput:
-    """Output from the enrollment workflow."""
-
-    workflow_id: str
-    student_id: int
-    course_id: int
-    success: bool
-    steps_completed: list[str]
-    steps_failed: list[str]
-    error_message: str | None = None
-
-
 # Retry policy for activities
 DEFAULT_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
@@ -61,7 +42,7 @@ DEFAULT_RETRY_POLICY = RetryPolicy(
 )
 
 
-@workflow.defn(name="EnrollmentWorkflow")
+@workflow.defn(name=Workflows.ENROLLMENT)
 class EnrollmentWorkflow:
     """
     Workflow that orchestrates the student enrollment process.

@@ -1,12 +1,19 @@
 """Course publish workflow that orchestrates the publishing process."""
 
-from dataclasses import dataclass
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+# All non-stdlib imports must go through imports_passed_through() because
+# importing `shared.*` triggers shared/__init__.py which pulls in boto3/S3,
+# and boto3 → urllib3 → http.client which is restricted by the Temporal sandbox.
 with workflow.unsafe.imports_passed_through():
+    from shared.temporal.constants import Workflows
+    from shared.temporal.inputs import (
+        CoursePublishWorkflowInput,
+        CoursePublishWorkflowOutput,
+    )
     from core_service.temporal.workflows.course_publish.activities import (
         # Course activities
         validate_course_for_publish,
@@ -25,24 +32,6 @@ with workflow.unsafe.imports_passed_through():
     )
 
 
-@dataclass
-class CoursePublishWorkflowInput:
-    course_id: int
-    instructor_id: int
-    course_title: str
-
-
-@dataclass
-class CoursePublishWorkflowOutput:
-    workflow_id: str
-    course_id: int
-    instructor_id: int
-    success: bool
-    steps_completed: list[str]
-    steps_failed: list[str]
-    error_message: str | None = None
-
-
 DEFAULT_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
@@ -59,7 +48,7 @@ INDEXING_POLL_RETRY_POLICY = RetryPolicy(
 )
 
 
-@workflow.defn(name="CoursePublishWorkflow")
+@workflow.defn(name=Workflows.COURSE_PUBLISH)
 class CoursePublishWorkflow:
     """
     Workflow that orchestrates course publishing:

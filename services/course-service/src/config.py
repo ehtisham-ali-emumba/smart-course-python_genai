@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str
     SCHEMA_REGISTRY_URL: str
 
+    # Temporal
+    TEMPORAL_HOST: str
+    TEMPORAL_NAMESPACE: str
+
     # ── S3 File Upload ────────────────────────────────
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str

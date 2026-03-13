@@ -1,11 +1,15 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.client import Client as TemporalClient
 
 from api.dependencies import (
     get_authenticated_user,
     get_current_user_id,
     get_event_producer,
+    get_temporal_client,
     require_instructor,
 )
 from core.database import get_db
@@ -21,6 +25,7 @@ from schemas.enrollment import (
     EnrollmentResponse,
 )
 from services.enrollment import EnrollmentService
+from temporal.enrollment import start_enrollment_workflow
 
 router = APIRouter()
 
@@ -31,13 +36,13 @@ async def enroll(
     request: Request,
     user: tuple[int, str] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
-    producer: EventProducer = Depends(get_event_producer),
+    temporal_client: TemporalClient = Depends(get_temporal_client),
 ):
     """
     Enroll the current user in a course.
 
     - If already enrolled → returns existing enrollment (200 OK)
-    - If not enrolled → publishes Kafka event to trigger enrollment workflow (202 Accepted)
+    - If not enrolled → starts enrollment workflow on Temporal (202 Accepted)
       The workflow will create the enrollment and send notifications.
     """
     user_id, role = user
@@ -74,20 +79,16 @@ async def enroll(
                 detail="Course enrollment limit reached",
             )
 
-    # Publish enrollment event - workflow will create the enrollment
+    # Start enrollment workflow on Temporal
     student_email = request.headers.get("X-User-Email") or ""
-    await producer.publish(
-        Topics.ENROLLMENT,
-        "enrollment.requested",
-        {
-            "student_id": user_id,
-            "course_id": data.course_id,
-            "course_title": course.title,
-            "email": student_email,
-            "payment_amount": data.payment_amount or 0,
-            "enrollment_source": data.enrollment_source or "web",
-        },
-        key=str(user_id),
+    await start_enrollment_workflow(
+        temporal_client,
+        student_id=user_id,
+        course_id=data.course_id,
+        course_title=course.title,  # type: ignore[arg-type]
+        student_email=student_email,
+        payment_amount=data.payment_amount or Decimal(0),
+        enrollment_source=data.enrollment_source or "web",
     )
 
     return JSONResponse(

@@ -10,6 +10,7 @@ from core.database import engine
 from core.mongodb import close_mongodb, connect_mongodb
 from core.redis import close_redis, connect_redis, get_redis
 from shared.kafka.producer import EventProducer
+from shared.temporal.client import get_temporal_client, close_temporal_client
 from models import (  # noqa: F401
     Certificate,
     Course,
@@ -42,8 +43,22 @@ async def lifespan(app: FastAPI):
 
     app.state.event_producer = producer
 
+    # Connect to Temporal
+    try:
+        temporal_client = await get_temporal_client(
+            host=settings.TEMPORAL_HOST,
+            namespace=settings.TEMPORAL_NAMESPACE,
+        )
+        logger.info("Temporal client connected to %s", settings.TEMPORAL_HOST)
+    except Exception:
+        logger.exception("Failed to connect Temporal client")
+        temporal_client = None
+
+    app.state.temporal_client = temporal_client
+
     yield
 
+    await close_temporal_client()
     await producer.stop()
     await close_redis()
     await close_mongodb()

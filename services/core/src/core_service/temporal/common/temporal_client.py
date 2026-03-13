@@ -1,38 +1,20 @@
-"""Temporal client singleton for starting workflows."""
+"""Temporal client — delegates to shared.temporal for singleton management."""
 
-import logging
-
-from temporalio.client import Client
+from shared.temporal.client import (
+    get_temporal_client as _shared_get,
+    close_temporal_client,
+)
 
 from core_service.config import core_settings
 
-logger = logging.getLogger(__name__)
 
-_temporal_client: Client | None = None
-
-
-async def get_temporal_client() -> Client:
-    """Get or create the Temporal client singleton."""
-    global _temporal_client
-    if _temporal_client is None:
-        logger.info(
-            "Connecting to Temporal at %s namespace=%s",
-            core_settings.TEMPORAL_HOST,
-            core_settings.TEMPORAL_NAMESPACE,
-        )
-        _temporal_client = await Client.connect(
-            core_settings.TEMPORAL_HOST,
-            namespace=core_settings.TEMPORAL_NAMESPACE,
-        )
-        logger.info("Temporal client connected successfully")
-    return _temporal_client
+async def get_temporal_client():
+    """Get the Temporal client using core-service config."""
+    return await _shared_get(
+        host=core_settings.TEMPORAL_HOST,
+        namespace=core_settings.TEMPORAL_NAMESPACE,
+    )
 
 
-async def close_temporal_client() -> None:
-    """Close the Temporal client connection."""
-    global _temporal_client
-    if _temporal_client is not None:
-        # Note: temporalio client doesn't have explicit close,
-        # but we clear the reference for clean shutdown
-        _temporal_client = None
-        logger.info("Temporal client reference cleared")
+# close_temporal_client is re-exported from shared.temporal
+__all__ = ["get_temporal_client", "close_temporal_client"]

@@ -7,6 +7,7 @@ from temporalio import activity
 
 from core_service.config import core_settings
 from core_service.temporal.common.http_client import get_json, post_json, patch_json
+from shared.temporal.constants import Activities
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class MarkCoursePublishedOutput:
 # ── Activities ────────────────────────────────────────────────
 
 
-@activity.defn
+@activity.defn(name=Activities.VALIDATE_COURSE_FOR_PUBLISH)
 async def validate_course_for_publish(
     input: ValidateCourseInput,
 ) -> ValidateCourseOutput:
@@ -111,7 +112,7 @@ async def validate_course_for_publish(
         raise  # Let Temporal retry
 
 
-@activity.defn
+@activity.defn(name=Activities.MARK_COURSE_PUBLISHED)
 async def mark_course_published(
     input: MarkCoursePublishedInput,
 ) -> MarkCoursePublishedOutput:

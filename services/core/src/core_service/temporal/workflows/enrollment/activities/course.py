@@ -8,6 +8,7 @@ from temporalio import activity
 
 from core_service.config import core_settings
 from core_service.temporal.common.http_client import get_json, post_json
+from shared.temporal.constants import Activities
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class FetchCourseModulesOutput:
 # ── Activities ─────────────────────────────────────────────────────────────────
 
 
-@activity.defn(name="fetch_course_details")
+@activity.defn(name=Activities.FETCH_COURSE_DETAILS)
 async def fetch_course_details(input: FetchCourseInput) -> FetchCourseOutput:
     """
     GET http://course-service:8002/api/v1/courses/{course_id}
@@ -90,7 +91,7 @@ async def fetch_course_details(input: FetchCourseInput) -> FetchCourseOutput:
         return FetchCourseOutput(success=False, course_id=input.course_id, error=str(e))
 
 
-@activity.defn(name="enroll_in_course")
+@activity.defn(name=Activities.ENROLL_IN_COURSE)
 async def enroll_in_course(
     input: EnrollInCourseInput,
 ) -> EnrollInCourseOutput:
@@ -157,7 +158,7 @@ async def enroll_in_course(
         return EnrollInCourseOutput(success=False, error=str(e))
 
 
-@activity.defn(name="fetch_course_modules")
+@activity.defn(name=Activities.FETCH_COURSE_MODULES)
 async def fetch_course_modules(
     input: FetchCourseModulesInput,
 ) -> FetchCourseModulesOutput:

@@ -15,9 +15,10 @@ dependencies = [
     "confluent-kafka",
     "fastapi",
     "uvicorn",
-    "boto3>=1.34.0",          # ← ADD THIS
-    "botocore>=1.34.0",       # ← ADD THIS
-    "python-multipart>=0.0.6" # ← ADD THIS (for UploadFile support)
+    "boto3>=1.34.0",
+    "botocore>=1.34.0",
+    "python-multipart>=0.0.6",
+    "temporalio"
 ]
 
 [tool.setuptools.packages.find]

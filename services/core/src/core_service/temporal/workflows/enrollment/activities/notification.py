@@ -7,6 +7,7 @@ from temporalio import activity
 
 from core_service.config import core_settings
 from core_service.temporal.common.http_client import post_json
+from shared.temporal.constants import Activities
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class SendInAppNotificationOutput:
 # ── Activities ─────────────────────────────────────────────────────────────────
 
 
-@activity.defn(name="trigger_enrollment_notifications")
+@activity.defn(name=Activities.TRIGGER_ENROLLMENT_NOTIFICATIONS)
 async def trigger_enrollment_notifications(
     input: TriggerEnrollmentNotificationsInput,
 ) -> TriggerEnrollmentNotificationsOutput:
@@ -84,7 +85,7 @@ async def trigger_enrollment_notifications(
         return TriggerEnrollmentNotificationsOutput(success=False, error=str(e))
 
 
-@activity.defn(name="send_in_app_notification")
+@activity.defn(name=Activities.SEND_IN_APP_NOTIFICATION)
 async def send_in_app_notification(
     input: SendInAppNotificationInput,
 ) -> SendInAppNotificationOutput:

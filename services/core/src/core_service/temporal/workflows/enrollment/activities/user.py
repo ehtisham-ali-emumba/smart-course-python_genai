@@ -7,6 +7,7 @@ from temporalio import activity
 
 from core_service.config import core_settings
 from core_service.temporal.common.http_client import get_json
+from shared.temporal.constants import Activities
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class ValidateUserEnrollmentOutput:
 # ── Activities ─────────────────────────────────────────────────────────────────
 
 
-@activity.defn(name="fetch_user_details")
+@activity.defn(name=Activities.FETCH_USER_DETAILS)
 async def fetch_user_details(input: FetchUserInput) -> FetchUserOutput:
     """
     GET http://user-service:8001/api/v1/auth/me
@@ -70,7 +71,7 @@ async def fetch_user_details(input: FetchUserInput) -> FetchUserOutput:
         return FetchUserOutput(success=False, user_id=input.user_id, error=str(e))
 
 
-@activity.defn(name="validate_user_for_enrollment")
+@activity.defn(name=Activities.VALIDATE_USER_FOR_ENROLLMENT)
 async def validate_user_for_enrollment(
     input: ValidateUserEnrollmentInput,
 ) -> ValidateUserEnrollmentOutput:

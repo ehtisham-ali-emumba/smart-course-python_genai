@@ -3,8 +3,9 @@ from venv import logger
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.client import Client as TemporalClient
 
-from api.dependencies import get_event_producer, require_instructor
+from api.dependencies import get_event_producer, get_temporal_client, require_instructor
 from core.database import get_db
 from shared.schemas.events.course import (
     CourseArchivedPayload,
@@ -24,6 +25,7 @@ from schemas.course import (
     CourseUpdate,
 )
 from services.course import CourseService
+from temporal.course_publish import start_course_publish_workflow
 
 router = APIRouter()
 
@@ -167,29 +169,26 @@ async def update_course_status(
     instructor_id: int = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
+    temporal_client: TemporalClient = Depends(get_temporal_client),
 ):
     """Change course status — publish, archive, etc. (owning instructor only).
 
-    For publish requests: returns 202 Accepted and triggers Temporal workflow via Kafka.
+    For publish requests: returns 202 Accepted and triggers Temporal workflow.
     For other statuses: returns 200 OK with updated course.
     """
     service = CourseService(db)
 
     if data.status == "published":
-        # --- NEW: Publish workflow instead of directly updating DB ---
+        # Start course publish workflow on Temporal
         try:
             course = await service.validate_course_for_publish(course_id, instructor_id)
             # course is a dict; raises ValueError/PermissionError if invalid
 
-            await producer.publish(
-                Topics.COURSE,
-                "course.publish_requested",
-                CoursePublishRequestedPayload(
-                    course_id=course_id,
-                    instructor_id=instructor_id,
-                    title=course["title"],
-                ).model_dump(),
-                key=str(course_id),
+            await start_course_publish_workflow(
+                temporal_client,
+                course_id=course_id,
+                instructor_id=instructor_id,
+                course_title=course["title"],
             )
 
             return {
