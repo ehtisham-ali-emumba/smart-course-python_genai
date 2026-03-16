@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +48,7 @@ async def register(
             Topics.USER,
             "user.registered",
             UserRegisteredPayload(
-                user_id=user.id,
+                user_id=str(user.id),
                 email=user.email,
                 first_name=user.first_name,
                 last_name=user.last_name,
@@ -90,12 +92,13 @@ async def login(
     await producer.publish(
         Topics.USER,
         "user.login",
-        UserLoginPayload(user_id=user.id, email=user.email).model_dump(),
+        UserLoginPayload(user_id=str(user.id), email=user.email).model_dump(),
         key=str(user.id),
     )
 
-    access_token = create_access_token(user.id, user.role)
-    refresh_token = create_refresh_token(user.id, user.role)
+    profile_id = await auth_service.get_profile_id(user.id, user.role)
+    access_token = create_access_token(user.id, user.role, profile_id)
+    refresh_token = create_refresh_token(user.id, user.role, profile_id)
 
     return TokenResponse(
         access_token=access_token,
@@ -122,7 +125,7 @@ async def refresh_token(
             )
 
         auth_service = AuthService(db)
-        user = await auth_service.get_user_by_id(int(payload.sub))
+        user = await auth_service.get_user_by_id(_uuid.UUID(payload.sub))
 
         if not user or not user.get("is_active", False):
             raise HTTPException(
@@ -130,10 +133,11 @@ async def refresh_token(
                 detail="User not found or inactive",
             )
 
-        user_id_val = user["id"]
+        user_id_val = _uuid.UUID(user["id"])
         user_role = user["role"]
-        access_token = create_access_token(user_id_val, user_role)
-        refresh_token = create_refresh_token(user_id_val, user_role)
+        profile_id = _uuid.UUID(payload.profile_id)
+        access_token = create_access_token(user_id_val, user_role, profile_id)
+        refresh_token = create_refresh_token(user_id_val, user_role, profile_id)
 
         return TokenResponse(
             access_token=access_token,
@@ -141,7 +145,7 @@ async def refresh_token(
             token_type="bearer",
         )
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
@@ -168,7 +172,7 @@ async def get_current_user(
         )
 
     auth_service = AuthService(db)
-    user = await auth_service.get_user_by_id(int(user_id))
+    user = await auth_service.get_user_by_id(_uuid.UUID(user_id))
 
     if not user:
         raise HTTPException(

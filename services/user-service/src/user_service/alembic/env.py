@@ -8,7 +8,7 @@ from user_service.config import settings
 from user_service.core.database import Base
 
 # Import ALL models so they register with Base.metadata
-from user_service.models import User, InstructorProfile  # noqa: F401
+from user_service.models import User, InstructorProfile, StudentProfile  # noqa: F401
 
 # Alembic Config object — gives access to alembic.ini values
 config = context.config
@@ -23,9 +23,7 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """Build the async database URL from app settings."""
-    return settings.DATABASE_URL.replace(
-        "postgresql://", "postgresql+asyncpg://"
-    )
+    return settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 
 def run_migrations_offline() -> None:

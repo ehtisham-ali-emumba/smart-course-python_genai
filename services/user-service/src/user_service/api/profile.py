@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +33,7 @@ async def get_profile(
         )
 
     user_service = UserService(db)
-    user = await user_service.get_user(int(user_id))
+    user = await user_service.get_user(_uuid.UUID(user_id))
 
     if not user:
         raise HTTPException(
@@ -58,8 +60,9 @@ async def update_profile(
             detail="Not authenticated",
         )
 
+    user_uuid = _uuid.UUID(user_id)
     user_service = UserService(db)
-    user = await user_service.update_user(int(user_id), user_data)
+    user = await user_service.update_user(user_uuid, user_data)
 
     if not user:
         raise HTTPException(
@@ -73,10 +76,10 @@ async def update_profile(
             Topics.USER,
             "user.profile_updated",
             UserProfileUpdatedPayload(
-                user_id=int(user_id),
+                user_id=str(user_uuid),
                 fields_changed=fields_changed,
             ).model_dump(),
-            key=str(user_id),
+            key=str(user_uuid),
         )
 
     return UserResponse(**user)

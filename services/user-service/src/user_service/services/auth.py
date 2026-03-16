@@ -1,7 +1,11 @@
+import uuid as _uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from user_service.core.security import get_password_hash, verify_password
 from user_service.models.user import User
+from user_service.repositories.instructor_profile import InstructorProfileRepository
+from user_service.repositories.student_profile import StudentProfileRepository
 from user_service.repositories.user import UserRepository
 from user_service.schemas.auth import UserRegister
 from user_service.services.user import UserService
@@ -13,6 +17,8 @@ class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.user_repo = UserRepository(db)
+        self.student_profile_repo = StudentProfileRepository(db)
+        self.instructor_profile_repo = InstructorProfileRepository(db)
 
     async def register(self, user_data: UserRegister) -> User:
         """
@@ -35,16 +41,23 @@ class AuthService:
         password_hash = get_password_hash(user_data.password)
 
         # Create user
-        user = await self.user_repo.create({
-            "email": user_data.email,
-            "first_name": user_data.first_name,
-            "last_name": user_data.last_name,
-            "password_hash": password_hash,
-            "role": user_data.role,
-            "is_active": True,
-            "is_verified": False,
-            "phone_number": user_data.phone_number,  # <-- NEW
-        })
+        user = await self.user_repo.create(
+            {
+                "email": user_data.email,
+                "first_name": user_data.first_name,
+                "last_name": user_data.last_name,
+                "password_hash": password_hash,
+                "role": user_data.role,
+                "is_active": True,
+                "is_verified": False,
+                "phone_number": user_data.phone_number,
+            }
+        )
+
+        if user_data.role == "student":
+            await self.student_profile_repo.create({"user_id": user.id})
+        elif user_data.role == "instructor":
+            await self.instructor_profile_repo.create({"user_id": user.id})
 
         return user
 
@@ -69,7 +82,21 @@ class AuthService:
 
         return user
 
-    async def get_user_by_id(self, user_id: int) -> dict | None:
+    async def get_profile_id(self, user_id: _uuid.UUID, role: str) -> _uuid.UUID:
+        """Resolve the profile UUID for a given user and role."""
+        if role == "student":
+            profile = await self.student_profile_repo.get_by_user_id(user_id)
+        elif role == "instructor":
+            profile = await self.instructor_profile_repo.get_by_user_id(user_id)
+        else:
+            return user_id
+
+        if not profile:
+            raise ValueError(f"No {role} profile found for user {user_id}")
+
+        return profile.id
+
+    async def get_user_by_id(self, user_id: _uuid.UUID) -> dict | None:
         """Get user by ID (uses cached UserService). Always returns dict or None."""
         user_service = UserService(self.db)
         return await user_service.get_user(user_id)

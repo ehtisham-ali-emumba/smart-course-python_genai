@@ -1,5 +1,5 @@
+import uuid as _uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import bcrypt
 from jose import JWTError, jwt
@@ -10,11 +10,13 @@ from user_service.config import settings
 
 class TokenPayload(BaseModel):
     """JWT token payload structure."""
-    sub: str  # user_id
+
+    sub: str  # user_id (UUID as string)
     exp: datetime
     iat: datetime
     type: str  # "access" or "refresh"
-    role: str  # user role
+    role: str
+    profile_id: str  # profile UUID as string
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,8 +36,9 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(
-    user_id: int,
+    user_id: _uuid.UUID,
     role: str,
+    profile_id: _uuid.UUID,
     expires_delta: timedelta | None = None,
 ) -> str:
     """
@@ -62,6 +65,7 @@ def create_access_token(
         "iat": datetime.now(timezone.utc),
         "type": "access",
         "role": role,
+        "profile_id": str(profile_id),
     }
 
     # Use HS256 algorithm
@@ -73,11 +77,13 @@ def create_access_token(
     return encoded_jwt
 
 
-def create_refresh_token(user_id: int, role: str) -> str:
+def create_refresh_token(
+    user_id: _uuid.UUID,
+    role: str,
+    profile_id: _uuid.UUID,
+) -> str:
     """Create JWT refresh token using HS256."""
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
-    )
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
 
     payload = {
         "sub": str(user_id),
@@ -85,6 +91,7 @@ def create_refresh_token(user_id: int, role: str) -> str:
         "iat": datetime.now(timezone.utc),
         "type": "refresh",
         "role": role,
+        "profile_id": str(profile_id),
     }
 
     encoded_jwt = jwt.encode(

@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
@@ -27,7 +29,7 @@ class UserService:
         self.db = db
         self.user_repo = UserRepository(db)
 
-    async def get_user(self, user_id: int) -> dict | None:
+    async def get_user(self, user_id: _uuid.UUID) -> dict | None:
         """Get user by ID — with cache. Always returns dict or None."""
         # 1. Try cache
         cache_key = f"user:profile:{user_id}"
@@ -46,9 +48,7 @@ class UserService:
 
         return None
 
-    async def update_user(
-        self, user_id: int, user_data: UserUpdate
-    ) -> dict | None:
+    async def update_user(self, user_id: _uuid.UUID, user_data: UserUpdate) -> dict | None:
         """Update user information — invalidate cache. Returns dict or None."""
         update_data = user_data.model_dump(exclude_unset=True)
         result = await self.user_repo.update(user_id, update_data)
