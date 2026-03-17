@@ -1,5 +1,6 @@
 """Instructor content generation API routes."""
 
+import uuid as _uuid
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -53,9 +54,9 @@ def get_instructor_service() -> InstructorService:
 )
 async def generate_summary(
     module_id: str,
-    course_id: int,
+    course_id: _uuid.UUID,
     request: GenerateSummaryRequest,
-    user_id: int = Depends(require_instructor),
+    user_id: _uuid.UUID = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerateSummaryResponse:
     """Generate a summary for a module.
@@ -89,9 +90,9 @@ async def generate_summary(
 )
 async def generate_quiz(
     module_id: str,
-    course_id: int,
+    course_id: _uuid.UUID,
     request: GenerateQuizRequest,
-    user_id: int = Depends(require_instructor),
+    user_id: _uuid.UUID = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerateQuizResponse:
     """Generate quiz questions for a module.
@@ -126,8 +127,8 @@ async def generate_quiz(
 )
 async def get_generation_status(
     module_id: str,
-    course_id: int,
-    user_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerationStatusResponse:
     """Check generation status for a module.

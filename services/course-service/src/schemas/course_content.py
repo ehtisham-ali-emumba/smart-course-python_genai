@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from bson import ObjectId
 from pydantic import BaseModel, Field
@@ -65,7 +66,7 @@ class CourseContentCreate(BaseModel):
 class CourseContentResponse(BaseModel):
     """Schema for course content API responses."""
 
-    course_id: int
+    course_id: UUID
     modules: list[ModuleSchema] = []
     metadata: Optional[CourseContentMetadata] = None
     created_at: Optional[datetime] = None

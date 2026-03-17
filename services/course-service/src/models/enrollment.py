@@ -1,34 +1,35 @@
+import uuid as _uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Column, DateTime, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Numeric, String, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
 
 class Enrollment(Base):
-    """Enrollment model — stored in PostgreSQL."""
-
     __tablename__ = "enrollments"
 
-    id = Column(Integer, primary_key=True, index=True)
-    student_id = Column(Integer, nullable=False, index=True)
-    course_id = Column(Integer, nullable=False, index=True)
+    id: Mapped[_uuid.UUID] = mapped_column(default=_uuid.uuid4, primary_key=True)
+    student_id: Mapped[_uuid.UUID] = mapped_column(index=True)
+    course_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("courses.id"), index=True)
 
-    status = Column(String(50), nullable=False, default="active", index=True)
-    enrolled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
-    dropped_at = Column(DateTime, nullable=True)
-    last_accessed_at = Column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)
+    enrolled_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(default=None)
+    dropped_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    payment_status = Column(String(50), nullable=True)
-    payment_amount = Column(Numeric(10, 2), nullable=True)
-    enrollment_source = Column(String(100), nullable=True)
+    payment_status: Mapped[str | None] = mapped_column(String(50), default=None)
+    payment_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), default=None)
+    enrollment_source: Mapped[str | None] = mapped_column(String(100), default=None)
 
-    time_spent_minutes = Column(Integer, default=0, nullable=False)
+    time_spent_minutes: Mapped[int] = mapped_column(default=0)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint("student_id", "course_id", name="uq_enrollment_student_course"),

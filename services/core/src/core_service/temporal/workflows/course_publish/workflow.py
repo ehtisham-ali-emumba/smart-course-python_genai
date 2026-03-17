@@ -71,7 +71,7 @@ class CoursePublishWorkflow:
         self, input: CoursePublishWorkflowInput
     ) -> CoursePublishWorkflowOutput:
         workflow.logger.info(
-            "Starting CoursePublishWorkflow for course_id=%d, instructor_id=%d",
+            "Starting CoursePublishWorkflow for course_id=%s, instructor_id=%s",
             input.course_id,
             input.instructor_id,
         )
@@ -94,7 +94,7 @@ class CoursePublishWorkflow:
             await self._notify_instructor_success(input)
 
             workflow.logger.info(
-                "CoursePublishWorkflow completed for course_id=%d",
+                "CoursePublishWorkflow completed for course_id=%s",
                 input.course_id,
             )
 
@@ -109,7 +109,7 @@ class CoursePublishWorkflow:
 
         except Exception as e:
             workflow.logger.error(
-                "CoursePublishWorkflow failed for course_id=%d: %s",
+                "CoursePublishWorkflow failed for course_id=%s: %s",
                 input.course_id,
                 str(e),
             )

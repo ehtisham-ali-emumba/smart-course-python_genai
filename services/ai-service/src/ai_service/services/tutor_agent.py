@@ -8,6 +8,7 @@ for embeddings + chat completion. Does NOT use LangChain's LLM wrappers.
 """
 
 import structlog
+import uuid as _uuid
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -27,7 +28,7 @@ class TutorState(TypedDict, total=False):
 
     # Input (set before graph invocation)
     query: str
-    course_id: int
+    course_id: _uuid.UUID
     module_id: str | None
     lesson_id: str | None
     conversation_history: list[dict]  # [{role: "user"|"assistant", content: "..."}]

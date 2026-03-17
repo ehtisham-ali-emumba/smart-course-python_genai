@@ -1,3 +1,4 @@
+import uuid as _uuid
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ class CertificateRepository(BaseRepository[Certificate]):
         super().__init__(db, Certificate)
 
     async def get_all_by_student_id(
-        self, student_id: int, skip: int = 0, limit: int = 100
+        self, student_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Certificate]:
         """Get all certificates for a student (via their enrollments)."""
         result = await self.db.execute(
@@ -28,7 +29,7 @@ class CertificateRepository(BaseRepository[Certificate]):
         )
         return list(result.scalars().all())
 
-    async def count_by_student_id(self, student_id: int) -> int:
+    async def count_by_student_id(self, student_id: _uuid.UUID) -> int:
         """Count certificates for a student."""
         result = await self.db.execute(
             select(func.count(Certificate.id))
@@ -37,7 +38,7 @@ class CertificateRepository(BaseRepository[Certificate]):
         )
         return result.scalar() or 0
 
-    async def get_by_enrollment(self, enrollment_id: int) -> Optional[Certificate]:
+    async def get_by_enrollment(self, enrollment_id: _uuid.UUID) -> Optional[Certificate]:
         """Get certificate by enrollment ID."""
         result = await self.db.execute(
             select(Certificate).where(Certificate.enrollment_id == enrollment_id)

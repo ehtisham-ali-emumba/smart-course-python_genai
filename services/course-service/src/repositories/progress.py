@@ -1,3 +1,4 @@
+import uuid as _uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -17,8 +18,7 @@ class ProgressRepository(BaseRepository[Progress]):
 
     async def upsert_progress(
         self,
-        user_id: int,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
         item_type: str,
         item_id: str,
         progress_percentage: float,
@@ -34,7 +34,6 @@ class ProgressRepository(BaseRepository[Progress]):
         stmt = (
             insert(Progress.__table__)
             .values(
-                user_id=user_id,
                 enrollment_id=enrollment_id,
                 item_type=item_type,
                 item_id=item_id,
@@ -43,7 +42,7 @@ class ProgressRepository(BaseRepository[Progress]):
                 updated_at=datetime.utcnow(),
             )
             .on_conflict_do_update(
-                constraint="uq_progress_user_enrollment_item",
+                constraint="uq_progress_enrollment_item",
                 set_={
                     "progress_percentage": progress_percentage,
                     "completed_at": completed_at,
@@ -59,17 +58,15 @@ class ProgressRepository(BaseRepository[Progress]):
         row = result.one()
         return await self.get_by_id(row[0])
 
-    async def get_by_user_and_item(
+    async def get_by_enrollment_and_item(
         self,
-        user_id: int,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
         item_type: str,
         item_id: str,
     ) -> Optional[Progress]:
-        """Get a specific progress record."""
+        """Get a specific progress record by enrollment + item."""
         result = await self.db.execute(
             select(Progress).where(
-                Progress.user_id == user_id,
                 Progress.enrollment_id == enrollment_id,
                 Progress.item_type == item_type,
                 Progress.item_id == item_id,
@@ -79,7 +76,7 @@ class ProgressRepository(BaseRepository[Progress]):
 
     async def get_enrollment_progress(
         self,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
     ) -> List[Progress]:
         """Get all progress records for an enrollment."""
         result = await self.db.execute(
@@ -91,7 +88,7 @@ class ProgressRepository(BaseRepository[Progress]):
 
     async def get_completed_items(
         self,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
         item_type: Optional[str] = None,
     ) -> List[Progress]:
         """Get all completed items (progress_percentage = 100) for an enrollment."""
@@ -106,13 +103,17 @@ class ProgressRepository(BaseRepository[Progress]):
 
     async def count_completed(
         self,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
         item_type: Optional[str] = None,
     ) -> int:
         """Count completed items for an enrollment."""
-        query = select(func.count()).select_from(Progress).where(
-            Progress.enrollment_id == enrollment_id,
-            Progress.completed_at.isnot(None),
+        query = (
+            select(func.count())
+            .select_from(Progress)
+            .where(
+                Progress.enrollment_id == enrollment_id,
+                Progress.completed_at.isnot(None),
+            )
         )
         if item_type:
             query = query.where(Progress.item_type == item_type)
@@ -121,7 +122,7 @@ class ProgressRepository(BaseRepository[Progress]):
 
     async def delete_enrollment_progress(
         self,
-        enrollment_id: int,
+        enrollment_id: _uuid.UUID,
     ) -> int:
         """Delete all progress for an enrollment."""
         result = await self.db.execute(

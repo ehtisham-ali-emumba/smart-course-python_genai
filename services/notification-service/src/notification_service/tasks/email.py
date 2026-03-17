@@ -7,7 +7,7 @@ from notification_service.worker import celery_app
 @celery_app.task(
     bind=True, max_retries=3, name="notification_service.tasks.email.send_welcome_email"
 )
-def send_welcome_email(self, user_id: int, email: str, first_name: str):
+def send_welcome_email(self, user_id: str, email: str, first_name: str):
     """
     Triggered by: user.registered event
     Purpose: Send welcome email to new user
@@ -33,7 +33,7 @@ def send_welcome_email(self, user_id: int, email: str, first_name: str):
     bind=True, max_retries=3, name="notification_service.tasks.email.send_enrollment_confirmation"
 )
 def send_enrollment_confirmation(
-    self, student_id: int, course_id: int, course_title: str, email: str
+    self, student_id: str, course_id: str, course_title: str, email: str
 ):
     """
     Triggered by: enrollment.created event
@@ -58,7 +58,7 @@ def send_enrollment_confirmation(
     bind=True, max_retries=3, name="notification_service.tasks.email.send_course_completion_email"
 )
 def send_course_completion_email(
-    self, student_id: int, course_id: int, course_title: str, email: str
+    self, student_id: str, course_id: str, course_title: str, email: str
 ):
     """
     Triggered by: enrollment.completed event
@@ -69,8 +69,7 @@ def send_course_completion_email(
             to=email,
             subject=f"Congratulations! You completed {course_title}",
             body=(
-                f"Great work completing '{course_title}'.\n\n"
-                "Your achievement has been recorded."
+                f"Great work completing '{course_title}'.\n\n" "Your achievement has been recorded."
             ),
             email_type="course_completion",
             metadata={"student_id": student_id, "course_id": course_id},
@@ -83,7 +82,7 @@ def send_course_completion_email(
     bind=True, max_retries=3, name="notification_service.tasks.email.send_certificate_ready_email"
 )
 def send_certificate_ready_email(
-    self, student_id: int, certificate_number: str, verification_code: str, email: str
+    self, student_id: str, certificate_number: str, verification_code: str, email: str
 ):
     """
     Triggered by: certificate.issued event

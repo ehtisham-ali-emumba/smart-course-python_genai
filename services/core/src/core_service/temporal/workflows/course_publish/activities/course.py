@@ -19,8 +19,8 @@ COURSE_SERVICE = core_settings.COURSE_SERVICE_URL
 
 @dataclass
 class ValidateCourseInput:
-    course_id: int
-    instructor_id: int
+    course_id: str
+    instructor_id: str
 
 
 @dataclass
@@ -32,7 +32,7 @@ class ValidateCourseOutput:
 
 @dataclass
 class MarkCoursePublishedInput:
-    course_id: int
+    course_id: str
 
 
 @dataclass
@@ -51,25 +51,25 @@ async def validate_course_for_publish(
     """Validate course exists, belongs to instructor, is not already published,
     and has content (at least 1 module).
     """
-    activity.logger.info("validate_course_for_publish course_id=%d", input.course_id)
+    activity.logger.info("validate_course_for_publish course_id=%s", input.course_id)
 
     try:
         # 1. Fetch course details (public endpoint)
         course = await get_json(f"{COURSE_SERVICE}/courses/{input.course_id}")
 
         # 2. Check ownership
-        if course.get("instructor_id") != input.instructor_id:
+        if str(course.get("instructor_id")) != input.instructor_id:
             return ValidateCourseOutput(
                 is_valid=False,
                 reason="Instructor does not own this course",
             )
 
-        # 3. Check status — must not be already published
+        # 3. Check status — only draft/publish_requested can proceed
         status = course.get("status", "")
-        if status == "published":
+        if status not in ("draft", "publish_requested"):
             return ValidateCourseOutput(
                 is_valid=False,
-                reason="Course is already published",
+                reason=f"Course cannot be published from status '{status}'",
                 course_status=status,
             )
 
@@ -120,7 +120,7 @@ async def mark_course_published(
 
     This also fires the course.published Kafka event from course-service.
     """
-    activity.logger.info("mark_course_published course_id=%d", input.course_id)
+    activity.logger.info("mark_course_published course_id=%s", input.course_id)
 
     try:
         # Internal endpoint — uses X-User-ID / X-User-Role headers

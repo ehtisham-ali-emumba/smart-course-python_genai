@@ -1,5 +1,7 @@
 """API dependencies for authentication and authorization."""
 
+import uuid as _uuid
+
 from fastapi import HTTPException, Request, status
 
 from ai_service.services.index import IndexService
@@ -15,7 +17,7 @@ from ai_service.core.mongodb import get_mongodb, connect_mongodb, close_mongodb
 from ai_service.core.redis import get_redis
 
 
-def get_current_user_id(request: Request) -> int:
+def get_current_user_id(request: Request) -> _uuid.UUID:
     """Extract user ID from X-User-ID header."""
     user_id = request.headers.get("X-User-ID")
     if not user_id:
@@ -23,7 +25,7 @@ def get_current_user_id(request: Request) -> int:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    return int(user_id)
+    return _uuid.UUID(user_id)
 
 
 def get_current_user_role(request: Request) -> str:
@@ -37,7 +39,7 @@ def get_current_user_role(request: Request) -> str:
     return role
 
 
-def require_instructor(request: Request) -> int:
+def require_instructor(request: Request) -> _uuid.UUID:
     """Require instructor or admin role."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
@@ -49,7 +51,7 @@ def require_instructor(request: Request) -> int:
     return user_id
 
 
-def require_student(request: Request) -> int:
+def require_student(request: Request) -> _uuid.UUID:
     """Require student or admin role."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
@@ -61,7 +63,7 @@ def require_student(request: Request) -> int:
     return user_id
 
 
-def get_authenticated_user(request: Request) -> tuple[int, str]:
+def get_authenticated_user(request: Request) -> tuple[_uuid.UUID, str]:
     """Get authenticated user ID and role."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)

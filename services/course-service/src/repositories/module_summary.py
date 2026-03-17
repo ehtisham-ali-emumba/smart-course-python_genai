@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+import uuid as _uuid
 
 
 class ModuleSummaryRepository:
@@ -9,17 +10,19 @@ class ModuleSummaryRepository:
         self.collection = db["module_summaries"]
 
     async def get_active_by_course_module(
-        self, course_id: int, module_id: str
+        self, course_id: _uuid.UUID, module_id: str
     ) -> dict[str, Any] | None:
         return await self.collection.find_one(
             {"course_id": course_id, "module_id": module_id, "is_active": True}
         )
 
-    async def get_by_course_module(self, course_id: int, module_id: str) -> dict[str, Any] | None:
+    async def get_by_course_module(
+        self, course_id: _uuid.UUID, module_id: str
+    ) -> dict[str, Any] | None:
         return await self.collection.find_one({"course_id": course_id, "module_id": module_id})
 
     async def get_published_by_course_module(
-        self, course_id: int, module_id: str
+        self, course_id: _uuid.UUID, module_id: str
     ) -> dict[str, Any] | None:
         return await self.collection.find_one(
             {
@@ -37,7 +40,7 @@ class ModuleSummaryRepository:
 
     async def replace(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         document: dict[str, Any],
     ) -> dict[str, Any]:
@@ -50,7 +53,7 @@ class ModuleSummaryRepository:
 
     async def patch(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         update_data: dict[str, Any],
     ) -> dict[str, Any] | None:
@@ -63,7 +66,7 @@ class ModuleSummaryRepository:
             {"course_id": course_id, "module_id": module_id, "is_active": True}
         )
 
-    async def soft_delete(self, course_id: int, module_id: str) -> bool:
+    async def soft_delete(self, course_id: _uuid.UUID, module_id: str) -> bool:
         result = await self.collection.update_one(
             {"course_id": course_id, "module_id": module_id, "is_active": True},
             {"$set": {"is_active": False, "updated_at": datetime.utcnow()}},

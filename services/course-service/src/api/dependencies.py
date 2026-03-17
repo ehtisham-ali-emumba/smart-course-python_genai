@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import HTTPException, Request, status
 from temporalio.client import Client as TemporalClient
 
@@ -9,63 +11,54 @@ def get_event_producer(request: Request) -> EventProducer:
 
 
 def get_temporal_client(request: Request) -> TemporalClient:
-    """FastAPI dependency to get the Temporal client from app state."""
     client = getattr(request.app.state, "temporal_client", None)
     if client is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Temporal client not available",
-        )
+        raise HTTPException(status_code=503, detail="Temporal client not available")
     return client
 
 
-def get_current_user_id(request: Request) -> int:
-    """
-    Extract current user ID from X-User-ID header.
-    This header is set by the API Gateway after JWT verification.
-    """
+def get_current_user_id(request: Request) -> _uuid.UUID:
     user_id = request.headers.get("X-User-ID")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
-    return int(user_id)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return _uuid.UUID(user_id)
 
 
 def get_current_user_role(request: Request) -> str:
-    """
-    Extract current user role from X-User-Role header.
-    This header is set by the API Gateway after JWT verification.
-    """
     role = request.headers.get("X-User-Role")
     if not role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return role
 
 
-def require_instructor(request: Request) -> int:
-    """
-    Require that the current user is an instructor.
-    Returns user_id if authorized.
-    """
-    user_id = get_current_user_id(request)
+def get_current_profile_id(request: Request) -> _uuid.UUID:
+    profile_id = request.headers.get("X-Profile-ID")
+    if not profile_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Profile not found")
+    return _uuid.UUID(profile_id)
+
+
+def require_instructor(request: Request) -> _uuid.UUID:
+    """Returns instructor profile_id (from X-Profile-ID header)."""
     role = get_current_user_role(request)
     if role not in ("instructor", "admin"):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Instructor role required",
+            status_code=status.HTTP_403_FORBIDDEN, detail="Instructor role required"
         )
-    return user_id
+    return get_current_profile_id(request)
 
 
-def get_authenticated_user(request: Request) -> tuple[int, str]:
-    """
-    Require any authenticated user. Returns (user_id, role).
-    """
+def require_student(request: Request) -> _uuid.UUID:
+    """Returns student profile_id (from X-Profile-ID header)."""
+    role = get_current_user_role(request)
+    if role != "student":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student role required")
+    return get_current_profile_id(request)
+
+
+def get_authenticated_user(request: Request) -> tuple[_uuid.UUID, str, _uuid.UUID]:
+    """Returns (user_id, role, profile_id)."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
-    return user_id, role
+    profile_id = get_current_profile_id(request)
+    return user_id, role, profile_id

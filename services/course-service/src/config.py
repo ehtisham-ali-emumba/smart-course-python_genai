@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     S3_PRESIGNED_URL_EXPIRY: int = 3600
     S3_MAX_FILE_SIZE_MB: float = 500.0
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 
 settings = Settings()  # type: ignore[call-arg]  # Loaded from .env at runtime

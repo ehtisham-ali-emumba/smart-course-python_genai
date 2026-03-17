@@ -1,6 +1,7 @@
 """Vector store repository for Qdrant operations."""
 
 import uuid
+import uuid as _uuid
 import structlog
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
@@ -69,7 +70,7 @@ class VectorStoreRepository:
 
     async def upsert_chunks(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         lesson_id: str,
         chunks: list[dict],
@@ -135,7 +136,7 @@ class VectorStoreRepository:
     async def search(
         self,
         query_embedding: list[float],
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str | None = None,
         lesson_id: str | None = None,
         top_k: int = 5,
@@ -186,7 +187,7 @@ class VectorStoreRepository:
             for point in results.points
         ]
 
-    async def delete_course_vectors(self, course_id: int) -> None:
+    async def delete_course_vectors(self, course_id: _uuid.UUID) -> None:
         """Delete all vectors for a course."""
         await self.client.delete(
             collection_name=self.collection_name,
@@ -201,7 +202,7 @@ class VectorStoreRepository:
         )
         logger.info("Deleted course vectors from Qdrant", course_id=course_id)
 
-    async def delete_module_vectors(self, course_id: int, module_id: str) -> None:
+    async def delete_module_vectors(self, course_id: _uuid.UUID, module_id: str) -> None:
         """Delete all vectors for a module."""
         await self.client.delete(
             collection_name=self.collection_name,
@@ -233,7 +234,7 @@ class VectorStoreRepository:
             "status": info.status.value,
         }
 
-    async def count_course_vectors(self, course_id: int) -> int:
+    async def count_course_vectors(self, course_id: _uuid.UUID) -> int:
         """Count vectors for a specific course."""
         result = await self.client.count(
             collection_name=self.collection_name,

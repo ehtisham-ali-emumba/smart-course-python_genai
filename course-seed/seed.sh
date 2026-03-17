@@ -541,8 +541,27 @@ PUBLISH_RESPONSE=$(curl -s -X PATCH "${BASE_URL}/courses/${COURSE_ID}/status" \
 
 COURSE_STATUS=$(echo "$PUBLISH_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', ''))" 2>/dev/null)
 
-if [ "$COURSE_STATUS" = "published" ]; then
-  log_success "Course published successfully!"
+if [ "$COURSE_STATUS" = "published" ] || [ "$COURSE_STATUS" = "publish_requested" ]; then
+  log_success "Course publish workflow started (status: ${COURSE_STATUS})"
+
+  # Wait for the Temporal workflow to finish publishing
+  if [ "$COURSE_STATUS" = "publish_requested" ]; then
+    log_info "Waiting for course publish workflow to complete..."
+    for i in $(seq 1 30); do
+      sleep 2
+      CHECK_RESPONSE=$(curl -s -X GET "${BASE_URL}/courses/${COURSE_ID}" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}")
+      CURRENT_STATUS=$(echo "$CHECK_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', ''))" 2>/dev/null)
+      if [ "$CURRENT_STATUS" = "published" ]; then
+        COURSE_STATUS="published"
+        log_success "Course published successfully!"
+        break
+      fi
+      if [ $i -eq 30 ]; then
+        log_error "Timed out waiting for course to publish. Current status: ${CURRENT_STATUS}"
+      fi
+    done
+  fi
 else
   log_error "Failed to publish course. Response:"
   echo "$PUBLISH_RESPONSE" | python3 -m json.tool 2>/dev/null | head -10 || echo "$PUBLISH_RESPONSE" | head -5

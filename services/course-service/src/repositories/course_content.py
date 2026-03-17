@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Optional
+import uuid as _uuid
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
@@ -11,11 +12,11 @@ class CourseContentRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.collection = db["course_content"]
 
-    async def get_by_course_id(self, course_id: int) -> Optional[dict[str, Any]]:
+    async def get_by_course_id(self, course_id: _uuid.UUID) -> Optional[dict[str, Any]]:
         """Get course content document by course_id."""
         return await self.collection.find_one({"course_id": course_id})
 
-    async def create(self, course_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    async def create(self, course_id: _uuid.UUID, data: dict[str, Any]) -> dict[str, Any]:
         """Create a new course content document."""
         now = datetime.utcnow()
         document = {
@@ -29,7 +30,7 @@ class CourseContentRepository:
         document["_id"] = result.inserted_id
         return document
 
-    async def update(self, course_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async def update(self, course_id: _uuid.UUID, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Replace course content for a given course_id."""
         now = datetime.utcnow()
         update_data = {
@@ -44,7 +45,7 @@ class CourseContentRepository:
         )
         return result
 
-    async def upsert(self, course_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    async def upsert(self, course_id: _uuid.UUID, data: dict[str, Any]) -> dict[str, Any]:
         """Create or update course content (upsert)."""
         now = datetime.utcnow()
         update_data = {
@@ -63,12 +64,14 @@ class CourseContentRepository:
         )
         return result
 
-    async def delete(self, course_id: int) -> bool:
+    async def delete(self, course_id: _uuid.UUID) -> bool:
         """Delete course content document."""
         result = await self.collection.delete_one({"course_id": course_id})
         return result.deleted_count > 0
 
-    async def add_module(self, course_id: int, module: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async def add_module(
+        self, course_id: _uuid.UUID, module: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         """Add a module to course content."""
         result = await self.collection.find_one_and_update(
             {"course_id": course_id},
@@ -81,7 +84,7 @@ class CourseContentRepository:
         return result
 
     async def add_lesson_to_module(
-        self, course_id: int, module_id: str, lesson: dict[str, Any]
+        self, course_id: _uuid.UUID, module_id: str, lesson: dict[str, Any]
     ) -> Optional[dict[str, Any]]:
         """Add a lesson to a specific module."""
         result = await self.collection.find_one_and_update(
@@ -95,7 +98,7 @@ class CourseContentRepository:
         return result
 
     async def update_module(
-        self, course_id: int, module_id: str, update_data: dict[str, Any]
+        self, course_id: _uuid.UUID, module_id: str, update_data: dict[str, Any]
     ) -> Optional[dict[str, Any]]:
         """Update a module's fields."""
         set_fields = {f"modules.$.{k}": v for k, v in update_data.items()}
@@ -109,7 +112,11 @@ class CourseContentRepository:
         return result
 
     async def update_lesson(
-        self, course_id: int, module_id: str, lesson_id: str, update_data: dict[str, Any]
+        self,
+        course_id: _uuid.UUID,
+        module_id: str,
+        lesson_id: str,
+        update_data: dict[str, Any],
     ) -> Optional[dict[str, Any]]:
         """Update a lesson's fields within a module."""
         doc = await self.collection.find_one({"course_id": course_id})
@@ -131,8 +138,7 @@ class CourseContentRepository:
             return None
 
         set_fields = {
-            f"modules.{module_idx}.lessons.{lesson_idx}.{k}": v
-            for k, v in update_data.items()
+            f"modules.{module_idx}.lessons.{lesson_idx}.{k}": v for k, v in update_data.items()
         }
         set_fields["updated_at"] = datetime.utcnow()
 
@@ -144,19 +150,23 @@ class CourseContentRepository:
         return result
 
     async def soft_delete_module(
-        self, course_id: int, module_id: str
+        self, course_id: _uuid.UUID, module_id: str
     ) -> Optional[dict[str, Any]]:
         """Soft-delete a module (set is_active=false)."""
         return await self.update_module(course_id, module_id, {"is_active": False})
 
     async def soft_delete_lesson(
-        self, course_id: int, module_id: str, lesson_id: str
+        self, course_id: _uuid.UUID, module_id: str, lesson_id: str
     ) -> Optional[dict[str, Any]]:
         """Soft-delete a lesson (set is_active=false)."""
         return await self.update_lesson(course_id, module_id, lesson_id, {"is_active": False})
 
     async def add_resource_to_lesson(
-        self, course_id: int, module_id: str, lesson_id: str, resource: dict[str, Any]
+        self,
+        course_id: _uuid.UUID,
+        module_id: str,
+        lesson_id: str,
+        resource: dict[str, Any],
     ) -> Optional[dict[str, Any]]:
         """Add a resource to a lesson."""
         doc = await self.collection.find_one({"course_id": course_id})
@@ -189,7 +199,7 @@ class CourseContentRepository:
 
     async def update_resource_in_lesson(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         lesson_id: str,
         resource_index: int,
@@ -231,7 +241,7 @@ class CourseContentRepository:
         return result
 
     async def delete_resource_from_lesson(
-        self, course_id: int, module_id: str, lesson_id: str, resource_index: int
+        self, course_id: _uuid.UUID, module_id: str, lesson_id: str, resource_index: int
     ) -> bool:
         """Delete a resource from a lesson by index."""
         doc = await self.collection.find_one({"course_id": course_id})

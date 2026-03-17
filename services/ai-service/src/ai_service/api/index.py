@@ -1,5 +1,7 @@
 """RAG indexing API routes."""
 
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, status
 
 from ai_service.api.dependencies import require_instructor, get_index_service
@@ -19,9 +21,9 @@ router = APIRouter()
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def build_course_index(
-    course_id: int,
+    course_id: _uuid.UUID,
     request: BuildIndexRequest | None = None,
-    user_id: int = Depends(require_instructor),
+    user_id: _uuid.UUID = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for entire course.
@@ -47,9 +49,9 @@ async def build_course_index(
 )
 async def build_module_index(
     module_id: str,
-    course_id: int,
+    course_id: _uuid.UUID,
     request: BuildIndexRequest | None = None,
-    user_id: int = Depends(require_instructor),
+    user_id: _uuid.UUID = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for a single module.
@@ -75,8 +77,8 @@ async def build_module_index(
     status_code=status.HTTP_200_OK,
 )
 async def get_course_index_status(
-    course_id: int,
-    user_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a course.
@@ -99,8 +101,8 @@ async def get_course_index_status(
 )
 async def get_module_index_status(
     module_id: str,
-    course_id: int,
-    user_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a module.

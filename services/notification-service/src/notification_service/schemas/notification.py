@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -30,6 +31,7 @@ class NotificationType(str, Enum):
     ENROLLMENT_WELCOME = "enrollment_welcome"
     ENROLLMENT_COMPLETED = "enrollment_completed"
     COURSE_PUBLISHED = "course_published"
+    COURSE_PUBLISH_FAILED = "course_publish_failed"
     COURSE_ARCHIVED = "course_archived"
     MODULE_COMPLETED = "module_completed"
     CERTIFICATE_ISSUED = "certificate_issued"
@@ -44,7 +46,7 @@ class NotificationType(str, Enum):
 class SendNotificationRequest(BaseModel):
     """Generic notification send request."""
 
-    user_id: int = Field(..., description="Target user ID")
+    user_id: UUID = Field(..., description="Target user ID")
     type: NotificationType = Field(
         default=NotificationType.GENERIC, description="Notification type"
     )
@@ -64,10 +66,10 @@ class SendNotificationRequest(BaseModel):
 class EnrollmentNotificationRequest(BaseModel):
     """Notification request for enrollment events."""
 
-    user_id: int = Field(..., description="Student user ID")
-    course_id: int = Field(..., description="Course ID")
+    user_id: UUID = Field(..., description="Student user ID")
+    course_id: UUID = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
-    enrollment_id: int = Field(..., description="Enrollment ID")
+    enrollment_id: UUID | None = Field(default=None, description="Enrollment ID")
     instructor_name: str = Field(default="", description="Instructor name")
     email: str = Field(default="", description="Student email address")
 
@@ -75,11 +77,11 @@ class EnrollmentNotificationRequest(BaseModel):
 class CourseNotificationRequest(BaseModel):
     """Notification request for course events (published, archived, etc.)."""
 
-    course_id: int = Field(..., description="Course ID")
+    course_id: UUID = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
-    instructor_id: int = Field(..., description="Instructor user ID")
+    instructor_id: UUID = Field(..., description="Instructor user ID")
     event: str = Field(..., description="Event type: 'published', 'archived', 'updated'")
-    affected_user_ids: list[int] = Field(
+    affected_user_ids: list[UUID] = Field(
         default_factory=list, description="List of user IDs to notify"
     )
 
@@ -87,10 +89,10 @@ class CourseNotificationRequest(BaseModel):
 class CertificateNotificationRequest(BaseModel):
     """Notification request when a certificate is issued."""
 
-    user_id: int = Field(..., description="Student user ID")
-    course_id: int = Field(..., description="Course ID")
+    user_id: UUID = Field(..., description="Student user ID")
+    course_id: UUID = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
-    certificate_id: int = Field(..., description="Certificate ID")
+    certificate_id: UUID = Field(..., description="Certificate ID")
     certificate_number: str = Field(..., description="Certificate number")
     verification_code: str = Field(..., description="Verification code")
 
@@ -98,10 +100,10 @@ class CertificateNotificationRequest(BaseModel):
 class ProgressNotificationRequest(BaseModel):
     """Notification request for progress milestones."""
 
-    user_id: int = Field(..., description="Student user ID")
-    course_id: int = Field(..., description="Course ID")
+    user_id: UUID = Field(..., description="Student user ID")
+    course_id: UUID = Field(..., description="Course ID")
     course_title: str = Field(..., description="Course title")
-    enrollment_id: int = Field(..., description="Enrollment ID")
+    enrollment_id: UUID = Field(..., description="Enrollment ID")
     module_title: str = Field(default="", description="Completed module title")
     completion_percentage: float = Field(
         ..., ge=0, le=100, description="Current completion percentage"

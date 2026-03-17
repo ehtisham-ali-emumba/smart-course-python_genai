@@ -1,6 +1,7 @@
 """Student AI tutor service — LangGraph-powered RAG tutoring."""
 
 import structlog
+import uuid as _uuid
 from uuid import uuid4
 
 from ai_service.clients.openai_client import OpenAIClient
@@ -37,7 +38,7 @@ class TutorService:
         self._sessions: dict[str, dict] = {}
 
     async def create_session(
-        self, student_id: int, request: CreateSessionRequest
+        self, student_id: _uuid.UUID, request: CreateSessionRequest
     ) -> SessionResponse:
         """Create a new tutor session."""
         session_id = uuid4().hex
@@ -82,7 +83,7 @@ class TutorService:
         )
 
     async def send_message(
-        self, session_id: str, user_id: int, request: SendMessageRequest
+        self, session_id: str, user_id: _uuid.UUID, request: SendMessageRequest
     ) -> SendMessageResponse:
         """Send a message to the tutor and get a response."""
         log = logger.bind(session_id=session_id, user_id=user_id)

@@ -1,6 +1,7 @@
 """Instructor content generation service."""
 
 import asyncio
+import uuid as _uuid
 import structlog
 from datetime import datetime
 from typing import Any
@@ -53,9 +54,9 @@ class InstructorService:
 
     async def _validate_course_ownership_and_module(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> None:
         """Validate course existence, instructor ownership, and module existence.
 
@@ -80,11 +81,11 @@ class InstructorService:
             )
 
         # 2. Verify the requesting user is the course owner
-        instructor_id = int(course.get("instructor_id", -1))
-        if instructor_id != user_id:
+        instructor_id_raw = course.get("instructor_id")
+        if not instructor_id_raw or _uuid.UUID(str(instructor_id_raw)) != user_id:
             log.warning(
                 "Forbidden: user is not the course owner",
-                course_instructor_id=instructor_id,
+                course_instructor_id=instructor_id_raw,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -105,10 +106,10 @@ class InstructorService:
 
     async def generate_summary(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         request: GenerateSummaryRequest,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> GenerateSummaryResponse:
         """Generate a summary for a module (async task).
 
@@ -149,10 +150,10 @@ class InstructorService:
 
     async def _run_summary_graph(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         request: GenerateSummaryRequest,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> None:
         """Background task: invoke summary generation LangGraph, handle completion/failure."""
         try:
@@ -211,10 +212,10 @@ class InstructorService:
 
     async def generate_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         request: GenerateQuizRequest,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> GenerateQuizResponse:
         """Generate quiz questions for a module (async task).
 
@@ -257,10 +258,10 @@ class InstructorService:
 
     async def _run_quiz_graph(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         request: GenerateQuizRequest,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> None:
         """Background task: invoke quiz generation LangGraph, handle completion/failure."""
         try:
@@ -319,7 +320,7 @@ class InstructorService:
             )
 
     async def get_generation_status(
-        self, course_id: int, module_id: str
+        self, course_id: _uuid.UUID, module_id: str
     ) -> GenerationStatusResponse:
         """Check generation status for a module.
 

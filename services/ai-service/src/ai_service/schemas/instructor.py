@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 from ai_service.schemas.common import (
@@ -35,7 +36,7 @@ class GenerateSummaryRequest(BaseModel):
 class GenerateSummaryResponse(BaseModel):
     """Response for summary generation request."""
 
-    course_id: int
+    course_id: UUID
     module_id: str
     source_lesson_ids: list[str] = Field(default_factory=list)
     summary_id: Optional[str] = Field(
@@ -75,7 +76,7 @@ class GenerateQuizRequest(BaseModel):
 class GenerateQuizResponse(BaseModel):
     """Response for quiz generation request."""
 
-    course_id: int
+    course_id: UUID
     module_id: str
     source_lesson_ids: list[str] = Field(default_factory=list)
     quiz_id: Optional[str] = Field(
@@ -95,7 +96,7 @@ class GenerateQuizResponse(BaseModel):
 class GenerationStatusResponse(BaseModel):
     """Response for GET /modules/{module_id}/generation-status."""
 
-    course_id: int
+    course_id: UUID
     module_id: str
     summary_status: GenerationStatus = GenerationStatus.NOT_STARTED
     quiz_status: GenerationStatus = GenerationStatus.NOT_STARTED

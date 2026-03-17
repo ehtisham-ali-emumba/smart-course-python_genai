@@ -1,7 +1,10 @@
 from datetime import datetime
-from venv import logger
+import logging
+import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio.client import Client as TemporalClient
 
@@ -33,7 +36,7 @@ router = APIRouter()
 @router.post("/", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
 async def create_course(
     data: CourseCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -79,7 +82,7 @@ async def list_published_courses(
 async def list_my_courses(
     skip: int = 0,
     limit: int = 20,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
 ):
     """List courses created by the current instructor."""
@@ -95,8 +98,8 @@ async def list_my_courses(
 
 @router.get("/my-courses/{course_id}", response_model=CourseResponse)
 async def get_my_course(
-    course_id: int,
-    instructor_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
 ):
     """Validate instructor ownership of a single course.
@@ -118,7 +121,7 @@ async def get_my_course(
 
 @router.get("/{course_id}", response_model=CourseResponse)
 async def get_course(
-    course_id: int,
+    course_id: _uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single course by ID."""
@@ -131,9 +134,9 @@ async def get_course(
 
 @router.put("/{course_id}", response_model=CourseResponse)
 async def update_course(
-    course_id: int,
+    course_id: _uuid.UUID,
     data: CourseUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -164,9 +167,9 @@ async def update_course(
 
 @router.patch("/{course_id}/status", status_code=status.HTTP_202_ACCEPTED)
 async def update_course_status(
-    course_id: int,
+    course_id: _uuid.UUID,
     data: CourseStatusUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
     temporal_client: TemporalClient = Depends(get_temporal_client),
@@ -183,6 +186,13 @@ async def update_course_status(
         try:
             course = await service.validate_course_for_publish(course_id, instructor_id)
             # course is a dict; raises ValueError/PermissionError if invalid
+
+            # Set status to publish_requested in DB before starting workflow
+            await service.update_status(
+                course_id,
+                CourseStatusUpdate(status="publish_requested"),
+                instructor_id,
+            )
 
             await start_course_publish_workflow(
                 temporal_client,
@@ -218,7 +228,7 @@ async def update_course_status(
                 ).model_dump(),
                 key=str(course_id),
             )
-        logger.info("Course %d status updated to %s", course_id, data.status)
+        logger.info("Course %s status updated to %s", course_id, data.status)
         return CourseResponse(**course)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -226,7 +236,7 @@ async def update_course_status(
 
 @router.patch("/{course_id}/internal/publish", response_model=CourseResponse)
 async def internal_publish_course(
-    course_id: int,
+    course_id: _uuid.UUID,
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -265,8 +275,8 @@ async def internal_publish_course(
 
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_course(
-    course_id: int,
-    instructor_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):

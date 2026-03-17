@@ -9,6 +9,7 @@ Follows the same closure/factory pattern as tutor_agent.py.
 """
 
 import structlog
+import uuid as _uuid
 from typing import TypedDict, Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -38,9 +39,9 @@ class QuizState(TypedDict):
     """State that flows through the quiz generation graph."""
 
     # Required Input
-    course_id: int
+    course_id: _uuid.UUID
     module_id: str
-    user_id: int
+    user_id: _uuid.UUID
     num_questions: int
     language: str
     passing_score: int
@@ -71,9 +72,9 @@ class SummaryState(TypedDict):
     """State that flows through the summary generation graph."""
 
     # Required Input
-    course_id: int
+    course_id: _uuid.UUID
     module_id: str
-    user_id: int
+    user_id: _uuid.UUID
     language: str
     retry_count: int
 

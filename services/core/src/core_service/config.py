@@ -35,7 +35,7 @@ class CoreSettings(BaseSettings):
     MOCK_ACTIVITY_FAIL_RATE: float
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_prefix="", case_sensitive=True
+        env_file=".env", env_prefix="", case_sensitive=True, extra="ignore"
     )
 
 

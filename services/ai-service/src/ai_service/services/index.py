@@ -1,6 +1,7 @@
 """RAG indexing service — builds vector index from course content."""
 
 import asyncio
+import uuid as _uuid
 import structlog
 from datetime import datetime, timezone
 
@@ -41,7 +42,7 @@ class IndexService:
         self.status_tracker = status_tracker
 
     async def build_course_index(
-        self, course_id: int, request: BuildIndexRequest
+        self, course_id: _uuid.UUID, request: BuildIndexRequest
     ) -> IndexBuildResponse:
         """Trigger index build for an entire course (background task)."""
         log = logger.bind(course_id=course_id)
@@ -58,7 +59,7 @@ class IndexService:
         )
 
     async def build_module_index(
-        self, course_id: int, module_id: str, request: BuildIndexRequest
+        self, course_id: _uuid.UUID, module_id: str, request: BuildIndexRequest
     ) -> IndexBuildResponse:
         """Trigger index build for a single module (background task)."""
         log = logger.bind(course_id=course_id, module_id=module_id)
@@ -76,7 +77,7 @@ class IndexService:
             requested_at=datetime.now(timezone.utc),
         )
 
-    async def _build_course_index_task(self, course_id: int, force_rebuild: bool) -> None:
+    async def _build_course_index_task(self, course_id: _uuid.UUID, force_rebuild: bool) -> None:
         """Background task: index all modules in a course."""
         log = logger.bind(course_id=course_id)
         try:
@@ -127,7 +128,7 @@ class IndexService:
             await self.status_tracker.set_failed(course_id, "course", "index", str(e))
 
     async def _build_module_index_task(
-        self, course_id: int, module_id: str, force_rebuild: bool
+        self, course_id: _uuid.UUID, module_id: str, force_rebuild: bool
     ) -> None:
         """Background task: index a single module."""
         log = logger.bind(course_id=course_id, module_id=module_id)
@@ -164,7 +165,7 @@ class IndexService:
 
     async def _index_module_lessons(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         module_title: str,
         lesson_texts: dict[str, str],
@@ -232,7 +233,7 @@ class IndexService:
 
         return all_embeddings
 
-    async def get_course_status(self, course_id: int) -> IndexStatusResponse:
+    async def get_course_status(self, course_id: _uuid.UUID) -> IndexStatusResponse:
         """Get index status for a course."""
         # Check Redis for in-flight status
         redis_status = await self.status_tracker.get_status(course_id, "course", "index")
@@ -271,7 +272,7 @@ class IndexService:
             ),
         )
 
-    async def get_module_status(self, course_id: int, module_id: str) -> IndexStatusResponse:
+    async def get_module_status(self, course_id: _uuid.UUID, module_id: str) -> IndexStatusResponse:
         """Get index status for a module."""
         redis_status = await self.status_tracker.get_status(course_id, module_id, "index")
 

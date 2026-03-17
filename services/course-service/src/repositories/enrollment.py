@@ -1,3 +1,4 @@
+import uuid as _uuid
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -14,7 +15,7 @@ class EnrollmentRepository(BaseRepository[Enrollment]):
         super().__init__(db, Enrollment)
 
     async def get_by_student_and_course(
-        self, student_id: int, course_id: int
+        self, student_id: _uuid.UUID, course_id: _uuid.UUID
     ) -> Optional[Enrollment]:
         """Get enrollment by student + course (unique pair)."""
         result = await self.db.execute(
@@ -26,7 +27,7 @@ class EnrollmentRepository(BaseRepository[Enrollment]):
         return result.scalars().first()
 
     async def get_by_student(
-        self, student_id: int, skip: int = 0, limit: int = 100
+        self, student_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Enrollment]:
         """Get all enrollments for a student."""
         result = await self.db.execute(
@@ -39,7 +40,7 @@ class EnrollmentRepository(BaseRepository[Enrollment]):
         return list(result.scalars().all())
 
     async def get_by_course(
-        self, course_id: int, skip: int = 0, limit: int = 100
+        self, course_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Enrollment]:
         """Get all enrollments for a course."""
         result = await self.db.execute(
@@ -51,25 +52,21 @@ class EnrollmentRepository(BaseRepository[Enrollment]):
         )
         return list(result.scalars().all())
 
-    async def count_by_course(self, course_id: int) -> int:
+    async def count_by_course(self, course_id: _uuid.UUID) -> int:
         """Count enrollments for a course."""
         result = await self.db.execute(
-            select(func.count()).select_from(Enrollment).where(
-                Enrollment.course_id == course_id
-            )
+            select(func.count()).select_from(Enrollment).where(Enrollment.course_id == course_id)
         )
         return result.scalar() or 0
 
-    async def count_by_student(self, student_id: int) -> int:
+    async def count_by_student(self, student_id: _uuid.UUID) -> int:
         """Count enrollments for a student."""
         result = await self.db.execute(
-            select(func.count()).select_from(Enrollment).where(
-                Enrollment.student_id == student_id
-            )
+            select(func.count()).select_from(Enrollment).where(Enrollment.student_id == student_id)
         )
         return result.scalar() or 0
 
-    async def is_enrolled(self, student_id: int, course_id: int) -> bool:
+    async def is_enrolled(self, student_id: _uuid.UUID, course_id: _uuid.UUID) -> bool:
         """Check if a student is enrolled in a course."""
         enrollment = await self.get_by_student_and_course(student_id, course_id)
         return enrollment is not None

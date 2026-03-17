@@ -1,3 +1,4 @@
+import uuid as _uuid
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -26,7 +27,7 @@ class CourseRepository(BaseRepository[Course]):
         return course is not None
 
     async def get_by_instructor(
-        self, instructor_id: int, skip: int = 0, limit: int = 100
+        self, instructor_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Course]:
         """Get all courses by an instructor."""
         result = await self.db.execute(
@@ -51,21 +52,21 @@ class CourseRepository(BaseRepository[Course]):
     async def count_published(self) -> int:
         """Count total published courses."""
         result = await self.db.execute(
-            select(func.count()).select_from(Course).where(
-                Course.status == "published", Course.is_deleted == False
-            )
+            select(func.count())
+            .select_from(Course)
+            .where(Course.status == "published", Course.is_deleted == False)
         )
         return result.scalar() or 0
 
-    async def count_by_instructor(self, instructor_id: int) -> int:
+    async def count_by_instructor(self, instructor_id: _uuid.UUID) -> int:
         """Count courses by instructor."""
         result = await self.db.execute(
-            select(func.count()).select_from(Course).where(
-                Course.instructor_id == instructor_id, Course.is_deleted == False
-            )
+            select(func.count())
+            .select_from(Course)
+            .where(Course.instructor_id == instructor_id, Course.is_deleted == False)
         )
         return result.scalar() or 0
 
-    async def soft_delete(self, id: int) -> Optional[Course]:
+    async def soft_delete(self, id: _uuid.UUID) -> Optional[Course]:
         """Soft delete a course."""
         return await self.update(id, {"is_deleted": True})

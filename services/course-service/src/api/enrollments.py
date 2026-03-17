@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -7,10 +9,10 @@ from temporalio.client import Client as TemporalClient
 
 from api.dependencies import (
     get_authenticated_user,
-    get_current_user_id,
     get_event_producer,
     get_temporal_client,
     require_instructor,
+    get_current_profile_id,
 )
 from core.database import get_db
 from shared.kafka.producer import EventProducer
@@ -34,7 +36,7 @@ router = APIRouter()
 async def enroll(
     data: EnrollmentCreate,
     request: Request,
-    user: tuple[int, str] = Depends(get_authenticated_user),
+    user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
     temporal_client: TemporalClient = Depends(get_temporal_client),
 ):
@@ -45,7 +47,7 @@ async def enroll(
     - If not enrolled → starts enrollment workflow on Temporal (202 Accepted)
       The workflow will create the enrollment and send notifications.
     """
-    user_id, role = user
+    user_id, role, profile_id = user
     if role == "instructor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -55,7 +57,7 @@ async def enroll(
     service = EnrollmentService(db)
 
     # Check if already enrolled
-    existing = await service.enrollment_repo.get_by_student_and_course(user_id, data.course_id)
+    existing = await service.enrollment_repo.get_by_student_and_course(profile_id, data.course_id)
     if existing:
         # Already enrolled - return existing without starting workflow
         return EnrollmentResponse.model_validate(existing)
@@ -83,7 +85,8 @@ async def enroll(
     student_email = request.headers.get("X-User-Email") or ""
     await start_enrollment_workflow(
         temporal_client,
-        student_id=user_id,
+        user_id=user_id,
+        student_id=profile_id,
         course_id=data.course_id,
         course_title=course.title,  # type: ignore[arg-type]
         student_email=student_email,
@@ -95,8 +98,8 @@ async def enroll(
         status_code=status.HTTP_202_ACCEPTED,
         content={
             "message": "Enrollment request received",
-            "student_id": user_id,
-            "course_id": data.course_id,
+            "student_id": str(profile_id),
+            "course_id": str(data.course_id),
             "status": "processing",
         },
     )
@@ -106,7 +109,7 @@ async def enroll(
 async def list_my_enrollments(
     skip: int = 0,
     limit: int = 20,
-    user_id: int = Depends(get_current_user_id),
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List all enrollments for the current user."""
@@ -122,8 +125,8 @@ async def list_my_enrollments(
 
 @router.get("/{enrollment_id}", response_model=EnrollmentResponse)
 async def get_enrollment(
-    enrollment_id: int,
-    user_id: int = Depends(get_current_user_id),
+    enrollment_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single enrollment (must be the enrolled student)."""
@@ -138,8 +141,8 @@ async def get_enrollment(
 
 @router.patch("/{enrollment_id}/drop", response_model=EnrollmentResponse)
 async def drop_enrollment(
-    enrollment_id: int,
-    user_id: int = Depends(get_current_user_id),
+    enrollment_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -156,9 +159,9 @@ async def drop_enrollment(
             Topics.ENROLLMENT,
             "enrollment.dropped",
             EnrollmentDroppedPayload(
-                enrollment_id=enrollment.id,  # type: ignore[arg-type]
-                student_id=enrollment.student_id,  # type: ignore[arg-type]
-                course_id=enrollment.course_id,  # type: ignore[arg-type]
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
             ).model_dump(),
             key=str(enrollment.student_id),
         )
@@ -170,8 +173,8 @@ async def drop_enrollment(
 
 @router.patch("/{enrollment_id}/undrop", response_model=EnrollmentResponse)
 async def undrop_enrollment(
-    enrollment_id: int,
-    user_id: int = Depends(get_current_user_id),
+    enrollment_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -188,9 +191,9 @@ async def undrop_enrollment(
             Topics.ENROLLMENT,
             "enrollment.reactivated",
             EnrollmentReactivatedPayload(
-                enrollment_id=enrollment.id,  # type: ignore[arg-type]
-                student_id=enrollment.student_id,  # type: ignore[arg-type]
-                course_id=enrollment.course_id,  # type: ignore[arg-type]
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
             ).model_dump(),
             key=str(enrollment.student_id),
         )
@@ -204,8 +207,8 @@ async def undrop_enrollment(
 
 @router.get("/course/{course_id}/active-students")
 async def list_active_students_for_course(
-    course_id: int,
-    instructor_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -216,7 +219,11 @@ async def list_active_students_for_course(
     # EnrollmentRepository.get_by_course() already exists
     enrollments = await service.enrollment_repo.get_by_course(course_id)
     active_ids = [e.student_id for e in enrollments if e.status == "active"]  # type: ignore[truthy-bool]
-    return {"course_id": course_id, "student_ids": active_ids, "count": len(active_ids)}
+    return {
+        "course_id": str(course_id),
+        "student_ids": [str(sid) for sid in active_ids],
+        "count": len(active_ids),
+    }
 
 
 @router.post(
@@ -224,7 +231,7 @@ async def list_active_students_for_course(
 )
 async def internal_create_enrollment(
     data: EnrollmentCreate,
-    user: tuple[int, str] = Depends(get_authenticated_user),
+    user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -233,7 +240,7 @@ async def internal_create_enrollment(
 
     This endpoint is idempotent - if enrollment already exists, returns it.
     """
-    user_id, role = user
+    _, role, profile_id = user
     if role == "instructor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -243,13 +250,13 @@ async def internal_create_enrollment(
     service = EnrollmentService(db)
 
     # Check if already enrolled - return existing (idempotent)
-    existing = await service.enrollment_repo.get_by_student_and_course(user_id, data.course_id)
+    existing = await service.enrollment_repo.get_by_student_and_course(profile_id, data.course_id)
     if existing:
         return EnrollmentResponse.model_validate(existing)
 
     # Create enrollment
     try:
-        enrollment = await service.enroll_student(user_id, data)
+        enrollment = await service.enroll_student(profile_id, data)
         return EnrollmentResponse.model_validate(enrollment)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

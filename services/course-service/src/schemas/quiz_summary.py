@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Literal, Optional
 from datetime import datetime
+from uuid import UUID
 
 # ── Options ──────────────────────────────────────────────────────────────────
 
@@ -88,11 +89,11 @@ class QuizSettingsSchema(BaseModel):
 
 class AuthorshipResponse(BaseModel):
     source: Literal["ai_generated", "manual", "ai_edited"]
-    generated_by_user_id: Optional[int]
+    generated_by_user_id: Optional[UUID]
     ai_model: Optional[str]
     source_lesson_ids: list[str]
     version: int
-    last_edited_by: Optional[int]
+    last_edited_by: Optional[UUID]
     last_edited_at: Optional[datetime]
 
 
@@ -143,7 +144,7 @@ class QuizGenerateRequest(BaseModel):
 
 class QuizResponse(BaseModel):
     id: str  # MongoDB _id as hex string
-    course_id: int
+    course_id: UUID
     module_id: str
     title: str
     description: Optional[str]
@@ -215,7 +216,7 @@ class SummaryGenerateRequest(BaseModel):
 
 class SummaryResponse(BaseModel):
     id: str  # MongoDB _id as hex string
-    course_id: int
+    course_id: UUID
     module_id: str
     title: str
     content: SummaryContentCreate

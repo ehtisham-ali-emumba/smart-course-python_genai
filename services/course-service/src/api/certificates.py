@@ -1,10 +1,11 @@
 from datetime import date
+import uuid as _uuid
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_authenticated_user, get_event_producer
+from api.dependencies import get_authenticated_user, get_current_profile_id, get_event_producer
 from core.database import get_db
 from shared.kafka.producer import EventProducer
 from schemas.certificate import (
@@ -21,7 +22,7 @@ router = APIRouter()
 @router.post("/", response_model=CertificateResponse, status_code=status.HTTP_201_CREATED)
 async def issue_certificate(
     data: CertificateCreate,
-    user: tuple[int, str] = Depends(get_authenticated_user),
+    user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -30,10 +31,10 @@ async def issue_certificate(
     - Students: call this when all modules are complete; backend verifies completion and issues cert.
     - Instructors: can issue for any completed enrollment.
     """
-    user_id, role = user
+    user_id, role, profile_id = user
     service = CertificateService(db, event_producer=producer)
     try:
-        cert = await service.issue_certificate(data, user_id, role)
+        cert = await service.issue_certificate(data, profile_id, role)
         return CertificateResponse.model_validate(cert)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -43,13 +44,13 @@ async def issue_certificate(
 async def list_my_certificates(
     skip: int = 0,
     limit: int = 50,
-    user: tuple[int, str] = Depends(get_authenticated_user),
+    user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all certificates for the current user."""
-    user_id, role = user
+    user_id, role, profile_id = user
     service = CertificateService(db)  # no producer needed for read
-    certs, total = await service.get_certificates_for_user(user_id, role, skip=skip, limit=limit)
+    certs, total = await service.get_certificates_for_user(profile_id, role, skip=skip, limit=limit)
     return CertificateListResponse(
         items=[CertificateResponse.model_validate(c) for c in certs],
         total=total,
@@ -60,15 +61,15 @@ async def list_my_certificates(
 
 @router.get("/enrollment/{enrollment_id}", response_model=CertificateResponse)
 async def get_certificate_by_enrollment(
-    enrollment_id: int,
-    user: tuple[int, str] = Depends(get_authenticated_user),
+    enrollment_id: _uuid.UUID,
+    user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get certificate for a specific enrollment. Students can only access their own."""
-    user_id, role = user
+    user_id, role, profile_id = user
     service = CertificateService(db)  # no producer needed for read
     try:
-        cert = await service.get_certificate_by_enrollment(enrollment_id, user_id, role)
+        cert = await service.get_certificate_by_enrollment(enrollment_id, profile_id, role)
         return CertificateResponse.model_validate(cert)
     except ValueError as e:
         if "not found" in str(e).lower() or "no certificate" in str(e).lower():
@@ -97,7 +98,7 @@ async def verify_certificate(
 
 @router.get("/{certificate_id}", response_model=CertificateResponse)
 async def get_certificate(
-    certificate_id: int,
+    certificate_id: _uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a certificate by ID."""

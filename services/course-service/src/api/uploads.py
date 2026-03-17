@@ -9,6 +9,7 @@ Generic upload (Pattern A) — Two-step (recommended for large files):
 """
 
 from typing import Optional
+import uuid as _uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
@@ -32,7 +33,7 @@ router = APIRouter()
 async def upload_file(
     file: UploadFile = File(..., description="File to upload (video, pdf, audio, image)"),
     lesson_type: str = Form(..., description="video | text | quiz | assignment"),
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     uploader: S3Uploader = Depends(get_s3_uploader),
 ) -> S3UploadResponse:
     """

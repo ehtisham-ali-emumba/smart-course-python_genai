@@ -1,5 +1,7 @@
 """HTTP client for communicating with course-service."""
 
+import uuid as _uuid
+
 import httpx
 import structlog
 from ai_service.config import settings
@@ -15,10 +17,10 @@ class CourseServiceClient:
 
     async def save_summary(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: dict,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> dict | None:
         """Save a summary to course-service via POST or PUT.
 
@@ -57,10 +59,10 @@ class CourseServiceClient:
 
     async def save_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: dict,
-        user_id: int,
+        user_id: _uuid.UUID,
     ) -> dict | None:
         """Save a quiz to course-service via POST or PUT.
 
@@ -111,7 +113,7 @@ class CourseServiceClient:
                 )
                 return None
 
-    async def get_course(self, course_id: int, user_id: int) -> dict | None:
+    async def get_course(self, course_id: _uuid.UUID, user_id: _uuid.UUID) -> dict | None:
         """Validate instructor ownership of a single course via course-service.
 
         Hits the instructor-scoped endpoint so the course-service enforces

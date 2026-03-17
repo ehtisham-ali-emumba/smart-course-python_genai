@@ -1,38 +1,27 @@
+import uuid as _uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.database import Base
 
 
 class UserAnswer(Base):
-    """User answer model for individual question responses."""
-
     __tablename__ = "user_answers"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    quiz_attempt_id = Column(
-        Integer,
-        ForeignKey("quiz_attempts.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+    id: Mapped[_uuid.UUID] = mapped_column(default=_uuid.uuid4, primary_key=True)
+    quiz_attempt_id: Mapped[_uuid.UUID] = mapped_column(
+        ForeignKey("quiz_attempts.id", ondelete="CASCADE"), index=True
     )
-    user_id = Column(Integer, nullable=False, index=True)
-    question_id = Column(String(50), nullable=False, index=True)
-    question_type = Column(String(20), nullable=False)
-    user_response = Column(JSONB, nullable=False)
-    is_correct = Column(Boolean, nullable=True)
-    time_spent_seconds = Column(Integer, nullable=True)
-    answered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    question_id: Mapped[str] = mapped_column(String(50), index=True)
+    question_type: Mapped[str] = mapped_column(String(20))
+    user_response: Mapped[dict] = mapped_column(JSONB)
+    is_correct: Mapped[bool | None] = mapped_column(default=None)
+    time_spent_seconds: Mapped[int | None] = mapped_column(default=None)
+    answered_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     quiz_attempt = relationship("QuizAttempt", back_populates="user_answers")
-
-    __table_args__ = (
-        Index("idx_user_answers_attempt_id", "quiz_attempt_id"),
-        Index("idx_user_answers_user_id", "user_id"),
-        Index("idx_user_answers_question_id", "question_id"),
-    )

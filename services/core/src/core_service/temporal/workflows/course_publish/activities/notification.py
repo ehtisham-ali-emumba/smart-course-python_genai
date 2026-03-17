@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 NOTIFICATION_SERVICE = core_settings.NOTIFICATION_SERVICE_URL
 
 
-def _instructor_auth_headers(instructor_id: int) -> dict[str, str]:
+def _instructor_auth_headers(instructor_id: str) -> dict[str, str]:
     return {
         "X-User-ID": str(instructor_id),
         "X-User-Role": "instructor",
@@ -26,8 +26,8 @@ def _instructor_auth_headers(instructor_id: int) -> dict[str, str]:
 
 @dataclass
 class NotifyInstructorInput:
-    instructor_id: int
-    course_id: int
+    instructor_id: str
+    course_id: str
     course_title: str
     error_message: str = ""
 
@@ -50,7 +50,7 @@ async def notify_instructor_publish_success(
     Calls notification-service /notifications/send which enqueues Celery tasks.
     """
     activity.logger.info(
-        "notify_instructor_publish_success course_id=%d instructor_id=%d",
+        "notify_instructor_publish_success course_id=%s instructor_id=%s",
         input.course_id,
         input.instructor_id,
     )
@@ -84,7 +84,7 @@ async def notify_instructor_publish_failure(
 ) -> NotifyInstructorOutput:
     """Notify instructor that course publishing failed."""
     activity.logger.info(
-        "notify_instructor_publish_failure course_id=%d",
+        "notify_instructor_publish_failure course_id=%s",
         input.course_id,
     )
 

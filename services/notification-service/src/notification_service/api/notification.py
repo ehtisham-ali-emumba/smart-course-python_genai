@@ -38,7 +38,7 @@ async def send_notification(
         celery_app.send_task(
             "notification_service.tasks.notification.create_in_app_notification",
             kwargs={
-                "user_id": request.user_id,
+                "user_id": str(request.user_id),
                 "title": request.title,
                 "message": request.message,
                 "notification_type": str(request.type),
@@ -74,8 +74,8 @@ async def notify_enrollment(
         celery_app.send_task(
             "notification_service.tasks.email.send_enrollment_confirmation",
             kwargs={
-                "student_id": request.user_id,
-                "course_id": request.course_id,
+                "student_id": str(request.user_id),
+                "course_id": str(request.course_id),
                 "course_title": request.course_title,
                 "email": request.email,
             },
@@ -86,7 +86,7 @@ async def notify_enrollment(
     celery_app.send_task(
         "notification_service.tasks.notification.create_in_app_notification",
         kwargs={
-            "user_id": request.user_id,
+            "user_id": str(request.user_id),
             "title": "Enrollment Confirmed!",
             "message": f"You're enrolled in '{request.course_title}'.",
             "notification_type": "enrollment",

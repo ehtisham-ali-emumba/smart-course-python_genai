@@ -1,5 +1,7 @@
 """Student AI tutor API routes."""
 
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ai_service.api.dependencies import get_authenticated_user, get_tutor_service
@@ -21,7 +23,7 @@ router = APIRouter()
 )
 async def create_session(
     request: CreateSessionRequest,
-    user_info: tuple[int, str] = Depends(get_authenticated_user),
+    user_info: tuple[_uuid.UUID, str] = Depends(get_authenticated_user),
     tutor_service: TutorService = Depends(get_tutor_service),
 ) -> SessionResponse:
     """Create a new tutor session.
@@ -42,7 +44,7 @@ async def create_session(
 async def send_message(
     session_id: str,
     request: SendMessageRequest,
-    user_info: tuple[int, str] = Depends(get_authenticated_user),
+    user_info: tuple[_uuid.UUID, str] = Depends(get_authenticated_user),
     tutor_service: TutorService = Depends(get_tutor_service),
 ) -> SendMessageResponse:
     """Send a message to the tutor and receive an AI-generated response.

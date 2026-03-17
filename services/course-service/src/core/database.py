@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from config import settings
 
@@ -18,8 +18,9 @@ AsyncSessionLocal = sessionmaker(
     future=True,
 )
 
-# Declarative base for SQLAlchemy models
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 async def get_db() -> AsyncSession:

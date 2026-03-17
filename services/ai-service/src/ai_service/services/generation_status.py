@@ -1,6 +1,7 @@
 """Generation status tracker using Redis."""
 
 import json
+import uuid as _uuid
 from datetime import datetime, timezone
 
 import structlog
@@ -15,7 +16,7 @@ logger = structlog.get_logger(__name__)
 _TTL_SECONDS = 3600
 
 
-def _key(course_id: int, module_id: str, content_type: str) -> str:
+def _key(course_id: _uuid.UUID, module_id: str, content_type: str) -> str:
     """Build Redis key for generation status."""
     return f"generation_status:{course_id}:{module_id}:{content_type}"
 
@@ -26,7 +27,9 @@ class GenerationStatusTracker:
     def __init__(self, redis: Redis):
         self._redis = redis
 
-    async def set_in_progress(self, course_id: int, module_id: str, content_type: str) -> None:
+    async def set_in_progress(
+        self, course_id: _uuid.UUID, module_id: str, content_type: str
+    ) -> None:
         """Mark a generation task as in-progress. Call this BEFORE starting LLM work."""
         key = _key(course_id, module_id, content_type)
         payload = json.dumps(
@@ -51,7 +54,7 @@ class GenerationStatusTracker:
             ttl_seconds=_TTL_SECONDS,
         )
 
-    async def set_completed(self, course_id: int, module_id: str, content_type: str) -> None:
+    async def set_completed(self, course_id: _uuid.UUID, module_id: str, content_type: str) -> None:
         """Mark a generation task as completed. Call this AFTER successful save."""
         key = _key(course_id, module_id, content_type)
         payload = json.dumps(
@@ -77,7 +80,7 @@ class GenerationStatusTracker:
         )
 
     async def set_failed(
-        self, course_id: int, module_id: str, content_type: str, error: str
+        self, course_id: _uuid.UUID, module_id: str, content_type: str, error: str
     ) -> None:
         """Mark a generation task as failed. Call this in the except block."""
         key = _key(course_id, module_id, content_type)
@@ -105,7 +108,9 @@ class GenerationStatusTracker:
             ttl_seconds=_TTL_SECONDS,
         )
 
-    async def get_status(self, course_id: int, module_id: str, content_type: str) -> dict | None:
+    async def get_status(
+        self, course_id: _uuid.UUID, module_id: str, content_type: str
+    ) -> dict | None:
         """Get current generation status. Returns parsed dict or None if no key exists."""
         key = _key(course_id, module_id, content_type)
         logger.debug(

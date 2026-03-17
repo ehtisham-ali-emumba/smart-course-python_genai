@@ -1,8 +1,10 @@
+import uuid as _uuid
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from api.dependencies import get_current_user_id, require_instructor
+from api.dependencies import get_current_profile_id, require_instructor
 from core.mongodb import get_mongodb
 from core.s3 import get_s3_uploader
 from schemas.course_content import (
@@ -33,8 +35,8 @@ router = APIRouter()
 
 @router.get("/{course_id}/content", response_model=CourseContentResponse)
 async def get_course_content(
-    course_id: int,
-    user_id: int = Depends(get_current_user_id),
+    course_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
 ):
     """Get full course content (modules and lessons)."""
     db = get_mongodb()
@@ -50,9 +52,9 @@ async def get_course_content(
 
 @router.put("/{course_id}/content", response_model=CourseContentResponse)
 async def upsert_course_content(
-    course_id: int,
+    course_id: _uuid.UUID,
     data: CourseContentCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Create or fully replace course content (instructors only)."""
     db = get_mongodb()
@@ -63,9 +65,9 @@ async def upsert_course_content(
 
 @router.post("/{course_id}/content/modules", response_model=CourseContentResponse)
 async def add_module(
-    course_id: int,
+    course_id: _uuid.UUID,
     data: ModuleCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Add a module to existing course content (instructors only)."""
     db = get_mongodb()
@@ -84,10 +86,10 @@ async def add_module(
     response_model=CourseContentResponse,
 )
 async def add_lesson(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     data: LessonCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Add a lesson to a module (instructors only)."""
     db = get_mongodb()
@@ -107,7 +109,7 @@ async def add_lesson(
     summary="Upload a file AND create a lesson in one multipart/form-data request",
 )
 async def add_lesson_with_file(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     # ── lesson metadata as Form fields ──
     title: str = Form(...),
@@ -119,7 +121,7 @@ async def add_lesson_with_file(
     file: Optional[UploadFile] = File(
         None, description="Optional lesson file (video, pdf, image, etc.)"
     ),
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     uploader: S3Uploader = Depends(get_s3_uploader),
 ) -> CourseContentResponse:
     """
@@ -200,10 +202,10 @@ async def add_lesson_with_file(
     response_model=CourseContentResponse,
 )
 async def update_module(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     data: ModuleUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Update a module (instructors only)."""
     db = get_mongodb()
@@ -222,9 +224,9 @@ async def update_module(
     response_model=CourseContentResponse,
 )
 async def delete_module(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Soft-delete a module (set is_active=false) (instructors only)."""
     db = get_mongodb()
@@ -243,11 +245,11 @@ async def delete_module(
     response_model=CourseContentResponse,
 )
 async def update_lesson(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     lesson_id: str,
     data: LessonUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Update a lesson (instructors only)."""
     db = get_mongodb()
@@ -266,10 +268,10 @@ async def update_lesson(
     response_model=CourseContentResponse,
 )
 async def delete_lesson(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     lesson_id: str,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Soft-delete a lesson (set is_active=false) (instructors only)."""
     db = get_mongodb()
@@ -288,11 +290,11 @@ async def delete_lesson(
     response_model=CourseContentResponse,
 )
 async def add_media_resource(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     lesson_id: str,
     data: MediaResourceCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Add media resource (video, pdf, audio, image) to a lesson (instructors only)."""
     db = get_mongodb()
@@ -311,12 +313,12 @@ async def add_media_resource(
     response_model=CourseContentResponse,
 )
 async def update_media_resource(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     lesson_id: str,
     resource_index: int,
     data: MediaResourceUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Update a media resource by index (instructors only)."""
     db = get_mongodb()
@@ -335,11 +337,11 @@ async def update_media_resource(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_media_resource(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     lesson_id: str,
     resource_index: int,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Delete a media resource by index (instructors only)."""
     db = get_mongodb()
@@ -354,8 +356,8 @@ async def delete_media_resource(
 
 @router.delete("/{course_id}/content", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_course_content(
-    course_id: int,
-    instructor_id: int = Depends(require_instructor),
+    course_id: _uuid.UUID,
+    instructor_id: _uuid.UUID = Depends(require_instructor),
 ):
     """Delete all content for a course (instructors only)."""
     db = get_mongodb()

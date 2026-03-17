@@ -1,3 +1,4 @@
+import uuid as _uuid
 from typing import Generic, List, Optional, Type, TypeVar
 
 from sqlalchemy import func, select
@@ -21,16 +22,14 @@ class BaseRepository(Generic[T]):
         await self.db.refresh(db_obj)
         return db_obj
 
-    async def get_by_id(self, id: int) -> Optional[T]:
+    async def get_by_id(self, id: _uuid.UUID) -> Optional[T]:
         """Get record by ID."""
         result = await self.db.execute(select(self.model).where(self.model.id == id))
         return result.scalars().first()
 
     async def get_all(self, skip: int = 0, limit: int = 100) -> List[T]:
         """Get all records with pagination."""
-        result = await self.db.execute(
-            select(self.model).offset(skip).limit(limit)
-        )
+        result = await self.db.execute(select(self.model).offset(skip).limit(limit))
         return list(result.scalars().all())
 
     async def count(self) -> int:
@@ -38,7 +37,7 @@ class BaseRepository(Generic[T]):
         result = await self.db.execute(select(func.count(self.model.id)))
         return result.scalar() or 0
 
-    async def update(self, id: int, obj_in: dict) -> Optional[T]:
+    async def update(self, id: _uuid.UUID, obj_in: dict) -> Optional[T]:
         """Update a record."""
         db_obj = await self.get_by_id(id)
         if db_obj:
@@ -48,7 +47,7 @@ class BaseRepository(Generic[T]):
             await self.db.refresh(db_obj)
         return db_obj
 
-    async def delete(self, id: int) -> bool:
+    async def delete(self, id: _uuid.UUID) -> bool:
         """Delete a record."""
         db_obj = await self.get_by_id(id)
         if db_obj:

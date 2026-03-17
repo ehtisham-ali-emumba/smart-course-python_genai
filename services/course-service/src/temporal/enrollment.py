@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+import uuid as _uuid
 from decimal import Decimal
 
 from temporalio.client import Client
@@ -15,8 +16,9 @@ logger = logging.getLogger(__name__)
 async def start_enrollment_workflow(
     client: Client,
     *,
-    student_id: int,
-    course_id: int,
+    user_id: _uuid.UUID,
+    student_id: _uuid.UUID,
+    course_id: _uuid.UUID,
     course_title: str,
     student_email: str = "",
     payment_amount: Decimal = Decimal(0),
@@ -27,8 +29,9 @@ async def start_enrollment_workflow(
     workflow_id = f"enrollment-std{student_id}-crs{course_id}-{event_id}"
 
     workflow_input = EnrollmentWorkflowInput(
-        student_id=student_id,
-        course_id=course_id,
+        student_id=str(student_id),
+        user_id=str(user_id),
+        course_id=str(course_id),
         course_title=course_title,
         student_email=student_email,
         payment_amount=float(payment_amount),

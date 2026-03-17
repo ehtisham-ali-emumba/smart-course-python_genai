@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 from ai_service.schemas.common import IndexStatus
@@ -19,7 +20,7 @@ class BuildIndexRequest(BaseModel):
 class IndexBuildResponse(BaseModel):
     """Response for triggering an index build."""
 
-    course_id: int
+    course_id: UUID
     module_id: Optional[str] = None
     status: IndexStatus = IndexStatus.PENDING
     message: str = "Index building is not yet implemented."
@@ -29,7 +30,7 @@ class IndexBuildResponse(BaseModel):
 class IndexStatusResponse(BaseModel):
     """Response for checking index build status."""
 
-    course_id: int
+    course_id: UUID
     module_id: Optional[str] = None
     status: IndexStatus = IndexStatus.PENDING
     total_chunks: int = 0

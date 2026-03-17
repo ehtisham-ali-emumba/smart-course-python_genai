@@ -56,6 +56,7 @@ async def verify_token(request: Request):
         headers={
             "X-Auth-User-ID": str(user_id),
             "X-Auth-User-Role": str(payload.get("role", "")),
+            "X-Auth-Profile-ID": str(payload.get("profile_id", "")),
         },
     )
 

@@ -10,7 +10,7 @@ class MockNotificationService:
 
     @staticmethod
     def create(
-        user_id: int,
+        user_id: str,
         title: str,
         message: str,
         notification_type: str = "system",

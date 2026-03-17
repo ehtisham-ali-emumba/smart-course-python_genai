@@ -1,5 +1,7 @@
 """Course content repository for reading from MongoDB."""
 
+import uuid as _uuid
+
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 
@@ -11,11 +13,11 @@ class CourseContentRepository:
         self.module_quizzes = db["module_quizzes"]
         self.module_summaries = db["module_summaries"]
 
-    async def get_course_content(self, course_id: int) -> dict | None:
+    async def get_course_content(self, course_id: _uuid.UUID) -> dict | None:
         """Fetch the full course_content document for a course."""
         return await self.course_content.find_one({"course_id": course_id})
 
-    async def get_module(self, course_id: int, module_id: str) -> dict | None:
+    async def get_module(self, course_id: _uuid.UUID, module_id: str) -> dict | None:
         """Fetch a specific module from course_content."""
         doc = await self.course_content.find_one(
             {"course_id": course_id, "modules.module_id": module_id},
@@ -26,7 +28,7 @@ class CourseContentRepository:
         return None
 
     async def get_lessons_for_module(
-        self, course_id: int, module_id: str, lesson_ids: list[str] | None = None
+        self, course_id: _uuid.UUID, module_id: str, lesson_ids: list[str] | None = None
     ) -> list[dict]:
         """Fetch lessons for a module, optionally filtered by lesson_ids."""
         module = await self.get_module(course_id, module_id)
@@ -37,20 +39,20 @@ class CourseContentRepository:
             lessons = [l for l in lessons if l["lesson_id"] in lesson_ids]
         return lessons
 
-    async def get_existing_quiz(self, course_id: int, module_id: str) -> dict | None:
+    async def get_existing_quiz(self, course_id: _uuid.UUID, module_id: str) -> dict | None:
         """Check if a quiz already exists for this module."""
         return await self.module_quizzes.find_one(
             {"course_id": course_id, "module_id": module_id, "is_active": True}
         )
 
-    async def get_existing_summary(self, course_id: int, module_id: str) -> dict | None:
+    async def get_existing_summary(self, course_id: _uuid.UUID, module_id: str) -> dict | None:
         """Check if a summary already exists for this module."""
         return await self.module_summaries.find_one(
             {"course_id": course_id, "module_id": module_id, "is_active": True}
         )
 
     async def get_module_with_lessons(
-        self, course_id: int, module_id: str, lesson_ids: list[str] | None = None
+        self, course_id: _uuid.UUID, module_id: str, lesson_ids: list[str] | None = None
     ) -> dict | None:
         """Build a structured context payload from module and its lessons for LLM processing.
 

@@ -1,16 +1,18 @@
 """Certificate event schemas."""
 
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
 class CertificateIssuedPayload(BaseModel):
     """Payload for certificate.issued event."""
 
-    certificate_id: int
-    enrollment_id: int
-    student_id: int
+    certificate_id: UUID
+    enrollment_id: UUID
+    student_id: UUID
     student_name: str | None = None
-    course_id: int
+    course_id: UUID
     course_title: str | None = None
     certificate_number: str
     verification_code: str
@@ -22,6 +24,6 @@ class CertificateIssuedPayload(BaseModel):
 class CertificateRevokedPayload(BaseModel):
     """Payload for certificate.revoked event."""
 
-    certificate_id: int
-    enrollment_id: int
+    certificate_id: UUID
+    enrollment_id: UUID
     reason: str

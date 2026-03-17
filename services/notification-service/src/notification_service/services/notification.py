@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from notification_service.core.logging import get_logger
 from notification_service.schemas.notification import (
     CertificateNotificationRequest,
@@ -55,7 +57,9 @@ class NotificationService:
 
     # --- Enrollment Notifications ---
 
-    async def notify_enrollment(self, request: EnrollmentNotificationRequest) -> NotificationResponse:
+    async def notify_enrollment(
+        self, request: EnrollmentNotificationRequest
+    ) -> NotificationResponse:
         """
         Handle enrollment welcome notification. Currently logs only.
 
@@ -111,9 +115,13 @@ class NotificationService:
         )
 
         notification_type = (
-            NotificationType.COURSE_PUBLISHED if request.event == "published"
-            else NotificationType.COURSE_ARCHIVED if request.event == "archived"
-            else NotificationType.GENERIC
+            NotificationType.COURSE_PUBLISHED
+            if request.event == "published"
+            else (
+                NotificationType.COURSE_ARCHIVED
+                if request.event == "archived"
+                else NotificationType.GENERIC
+            )
         )
 
         return NotificationResponse(
@@ -125,7 +133,9 @@ class NotificationService:
 
     # --- Certificate Notifications ---
 
-    async def notify_certificate(self, request: CertificateNotificationRequest) -> NotificationResponse:
+    async def notify_certificate(
+        self, request: CertificateNotificationRequest
+    ) -> NotificationResponse:
         """
         Handle certificate issuance notification. Currently logs only.
 
@@ -183,7 +193,7 @@ class NotificationService:
 
     # --- Private Channel Handlers (Stubs for Future) ---
 
-    async def _send_email(self, to_user_id: int, subject: str, body: str) -> bool:
+    async def _send_email(self, to_user_id: _uuid.UUID, subject: str, body: str) -> bool:
         """
         Stub: Send email notification.
 
@@ -201,7 +211,7 @@ class NotificationService:
         )
         return True
 
-    async def _send_push(self, to_user_id: int, title: str, body: str) -> bool:
+    async def _send_push(self, to_user_id: _uuid.UUID, title: str, body: str) -> bool:
         """
         Stub: Send push notification.
 
@@ -218,7 +228,7 @@ class NotificationService:
         )
         return True
 
-    async def _send_sms(self, to_user_id: int, message: str) -> bool:
+    async def _send_sms(self, to_user_id: _uuid.UUID, message: str) -> bool:
         """
         Stub: Send SMS notification.
 

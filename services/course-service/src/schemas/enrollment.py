@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class EnrollmentCreate(BaseModel):
     """Schema for enrolling a student in a course."""
 
-    course_id: int
+    course_id: UUID
     payment_amount: Optional[Decimal] = None
     enrollment_source: Optional[str] = Field(None, max_length=100)
 
@@ -22,9 +23,9 @@ class EnrollmentUpdate(BaseModel):
 class EnrollmentResponse(BaseModel):
     """Schema for enrollment API responses."""
 
-    id: int
-    student_id: int
-    course_id: int
+    id: UUID
+    student_id: UUID
+    course_id: UUID
     status: str
     enrolled_at: datetime
     started_at: Optional[datetime]

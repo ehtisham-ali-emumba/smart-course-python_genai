@@ -1,12 +1,14 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class CourseCreate(BaseModel):
     """Schema for creating a new course."""
+
     title: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     description: Optional[str] = None
@@ -25,6 +27,7 @@ class CourseCreate(BaseModel):
 
 class CourseUpdate(BaseModel):
     """Schema for updating a course."""
+
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     long_description: Optional[str] = None
@@ -42,17 +45,19 @@ class CourseUpdate(BaseModel):
 
 class CourseStatusUpdate(BaseModel):
     """Schema for changing course status (publish, archive)."""
-    status: str = Field(..., pattern=r"^(draft|published|archived)$")
+
+    status: str = Field(..., pattern=r"^(draft|published|archived|publish_requested)$")
 
 
 class CourseResponse(BaseModel):
     """Schema for course API responses."""
-    id: int
+
+    id: UUID
     title: str
     slug: str
     description: Optional[str]
     long_description: Optional[str]
-    instructor_id: int
+    instructor_id: UUID
     category: Optional[str]
     level: Optional[str]
     language: str
@@ -74,6 +79,7 @@ class CourseResponse(BaseModel):
 
 class CourseListResponse(BaseModel):
     """Paginated list of courses."""
+
     items: list[CourseResponse]
     total: int
     skip: int

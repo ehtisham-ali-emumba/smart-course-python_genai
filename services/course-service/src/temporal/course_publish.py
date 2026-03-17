@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+import uuid as _uuid
 
 from temporalio.client import Client
 
@@ -14,8 +15,8 @@ logger = logging.getLogger(__name__)
 async def start_course_publish_workflow(
     client: Client,
     *,
-    course_id: int,
-    instructor_id: int,
+    course_id: _uuid.UUID,
+    instructor_id: _uuid.UUID,
     course_title: str,
 ) -> str:
     """Start the CoursePublishWorkflow on Temporal and return the workflow ID."""
@@ -23,8 +24,8 @@ async def start_course_publish_workflow(
     workflow_id = f"course-publish-crs{course_id}-{event_id}"
 
     workflow_input = CoursePublishWorkflowInput(
-        course_id=course_id,
-        instructor_id=instructor_id,
+        course_id=str(course_id),
+        instructor_id=str(instructor_id),
         course_title=course_title,
     )
 

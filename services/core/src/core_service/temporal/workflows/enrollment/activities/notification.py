@@ -19,12 +19,12 @@ NOTIFICATION_SERVICE = core_settings.NOTIFICATION_SERVICE_URL
 
 @dataclass
 class TriggerEnrollmentNotificationsInput:
-    student_id: int
+    student_id: str
     student_email: str
     student_name: str | None
-    course_id: int
+    course_id: str
     course_title: str
-    enrollment_id: int = 0
+    enrollment_id: str = ""
 
 
 @dataclass
@@ -36,7 +36,7 @@ class TriggerEnrollmentNotificationsOutput:
 
 @dataclass
 class SendInAppNotificationInput:
-    user_id: int
+    user_id: str
     title: str
     message: str
     notification_type: str = "info"
@@ -67,10 +67,10 @@ async def trigger_enrollment_notifications(
 
     payload = {
         "user_id": input.student_id,
-        "email": "test@test.com",
+        "email": input.student_email,
         "course_id": input.course_id,
         "course_title": input.course_title,
-        "enrollment_id": 1,
+        "enrollment_id": input.enrollment_id,
         "instructor_name": "",  # Not available at this step
     }
 

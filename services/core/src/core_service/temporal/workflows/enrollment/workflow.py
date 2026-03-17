@@ -66,7 +66,7 @@ class EnrollmentWorkflow:
     async def run(self, input: EnrollmentWorkflowInput) -> EnrollmentWorkflowOutput:
         """Execute the enrollment workflow."""
         workflow.logger.info(
-            "Starting EnrollmentWorkflow for student_id=%d, course_id=%d",
+            "Starting EnrollmentWorkflow for student_id=%s, course_id=%s",
             input.student_id,
             input.course_id,
         )
@@ -75,23 +75,23 @@ class EnrollmentWorkflow:
 
         try:
             # Step 1: Validate user for enrollment
-            await self._validate_user(input.student_id)
+            await self._validate_user(input.user_id)
 
             # Step 2: Fetch user details
-            await self._fetch_user_details(input.student_id, input.student_email)
+            await self._fetch_user_details(input.user_id, input.student_email)
 
             # Step 3: Fetch course details
             await self._fetch_course_details(input.course_id, input.course_title)
 
             # Step 4: Create enrollment in course-service
-            await self._enroll_in_course(input)
+            enrollment_id = await self._enroll_in_course(input)
 
             # Step 5: Trigger enrollment notifications (email + in-app)
             # The notifications/enrollment endpoint handles both via Celery tasks
-            await self._send_enrollment_notifications(input)
+            await self._send_enrollment_notifications(input, enrollment_id)
 
             workflow.logger.info(
-                "EnrollmentWorkflow completed successfully for student_id=%d, course_id=%d",
+                "EnrollmentWorkflow completed successfully for student_id=%s, course_id=%s",
                 input.student_id,
                 input.course_id,
             )
@@ -107,7 +107,7 @@ class EnrollmentWorkflow:
 
         except Exception as e:
             workflow.logger.error(
-                "EnrollmentWorkflow failed for student_id=%d, course_id=%d: %s",
+                "EnrollmentWorkflow failed for student_id=%s, course_id=%s: %s",
                 input.student_id,
                 input.course_id,
                 str(e),
@@ -123,7 +123,7 @@ class EnrollmentWorkflow:
                 error_message=str(e),
             )
 
-    async def _validate_user(self, student_id: int) -> None:
+    async def _validate_user(self, student_id: str) -> None:
         """Step 1: Validate user can enroll."""
         step_name = "validate_user"
         workflow.logger.info("Step: %s", step_name)
@@ -141,7 +141,7 @@ class EnrollmentWorkflow:
 
         self.steps_completed.append(step_name)
 
-    async def _fetch_user_details(self, student_id: int, fallback_email: str) -> None:
+    async def _fetch_user_details(self, student_id: str, fallback_email: str) -> None:
         """Step 2: Fetch user details."""
         step_name = "fetch_user_details"
         workflow.logger.info("Step: %s", step_name)
@@ -175,7 +175,7 @@ class EnrollmentWorkflow:
             )
             self.steps_completed.append(f"{step_name}_fallback")
 
-    async def _fetch_course_details(self, course_id: int, fallback_title: str) -> None:
+    async def _fetch_course_details(self, course_id: str, fallback_title: str) -> None:
         """Step 3: Fetch course details."""
         step_name = "fetch_course_details"
         workflow.logger.info("Step: %s", step_name)
@@ -209,7 +209,7 @@ class EnrollmentWorkflow:
             )
             self.steps_completed.append(f"{step_name}_fallback")
 
-    async def _enroll_in_course(self, input: EnrollmentWorkflowInput) -> None:
+    async def _enroll_in_course(self, input: EnrollmentWorkflowInput) -> str:
         """Step 4: Create enrollment in course-service (idempotent — 400 already-enrolled treated as success)."""
         step_name = "enroll_in_course"
         workflow.logger.info("Step: %s", step_name)
@@ -218,6 +218,7 @@ class EnrollmentWorkflow:
             enroll_in_course,
             EnrollInCourseInput(
                 student_id=input.student_id,
+                user_id=input.user_id,
                 course_id=input.course_id,
                 payment_amount=input.payment_amount,
                 enrollment_source=input.enrollment_source,
@@ -228,6 +229,7 @@ class EnrollmentWorkflow:
 
         if result.success:
             self.steps_completed.append(step_name)
+            return result.enrollment_id or ""
         else:
             # Non-critical — enrollment may already exist outside this flow
             workflow.logger.warning(
@@ -235,9 +237,10 @@ class EnrollmentWorkflow:
                 result.error,
             )
             self.steps_completed.append(f"{step_name}_failed")
+            return ""
 
     async def _send_enrollment_notifications(
-        self, input: EnrollmentWorkflowInput
+        self, input: EnrollmentWorkflowInput, enrollment_id: str = ""
     ) -> None:
         """Step 5: Trigger enrollment notifications (email + in-app).
 
@@ -264,6 +267,7 @@ class EnrollmentWorkflow:
                 student_name=user_name,
                 course_id=input.course_id,
                 course_title=course_title,
+                enrollment_id=enrollment_id,
             ),
             start_to_close_timeout=timedelta(seconds=60),
             retry_policy=DEFAULT_RETRY_POLICY,

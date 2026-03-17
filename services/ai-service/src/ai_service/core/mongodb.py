@@ -1,6 +1,8 @@
 """MongoDB connection module."""
 
 import logging
+from bson.codec_options import CodecOptions
+from bson.binary import UuidRepresentation
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,8 @@ async def connect_mongodb(url: str, db_name: str) -> None:
     global _mongodb_client, _mongodb
     try:
         _mongodb_client = AsyncIOMotorClient(url)
-        _mongodb = _mongodb_client[db_name]
+        codec_options = CodecOptions(uuid_representation=UuidRepresentation.STANDARD)
+        _mongodb = _mongodb_client[db_name].with_options(codec_options=codec_options)
         # Verify connection
         await _mongodb_client.admin.command("ping")
         logger.info("Connected to MongoDB")

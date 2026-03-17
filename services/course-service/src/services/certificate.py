@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
+import uuid as _uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +26,7 @@ class CertificateService:
     async def issue_certificate(
         self,
         data: CertificateCreate,
-        user_id: int,
+        user_id: _uuid.UUID,
         role: str,
     ) -> Certificate:
         """
@@ -82,12 +83,12 @@ class CertificateService:
 
         return cert
 
-    async def get_certificate(self, certificate_id: int) -> Certificate | None:
+    async def get_certificate(self, certificate_id: _uuid.UUID) -> Certificate | None:
         """Get certificate by ID."""
         return await self.cert_repo.get_by_id(certificate_id)
 
     async def get_certificates_for_user(
-        self, user_id: int, role: str, skip: int = 0, limit: int = 50
+        self, user_id: _uuid.UUID, role: str, skip: int = 0, limit: int = 50
     ) -> tuple[list[Certificate], int]:
         """Get all certificates for a user. Students see only their own; instructors see all (future)."""
         certs = await self.cert_repo.get_all_by_student_id(user_id, skip=skip, limit=limit)
@@ -95,7 +96,7 @@ class CertificateService:
         return certs, total
 
     async def get_certificate_by_enrollment(
-        self, enrollment_id: int, user_id: int, role: str
+        self, enrollment_id: _uuid.UUID, user_id: _uuid.UUID, role: str
     ) -> Certificate:
         """Get certificate by enrollment ID. Students must own the enrollment."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
@@ -113,7 +114,7 @@ class CertificateService:
         return await self.cert_repo.get_by_verification_code(verification_code)
 
     async def revoke_certificate(
-        self, certificate_id: int, reason: str, revoked_by_id: int
+        self, certificate_id: _uuid.UUID, reason: str, revoked_by_id: _uuid.UUID
     ) -> Certificate | None:
         """Revoke a certificate."""
         cert = await self.cert_repo.get_by_id(certificate_id)

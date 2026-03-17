@@ -1,5 +1,7 @@
 from typing import cast
 
+from bson.codec_options import CodecOptions
+from bson.binary import UuidRepresentation
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
     AsyncIOMotorDatabase,
@@ -16,7 +18,8 @@ async def connect_mongodb() -> None:
     """Initialize MongoDB connection. Call on app startup."""
     global _client, _database
     client = AsyncIOMotorClient(settings.MONGODB_URL)
-    database = client[settings.MONGODB_DB_NAME]
+    codec_options = CodecOptions(uuid_representation=UuidRepresentation.STANDARD)
+    database = client[settings.MONGODB_DB_NAME].with_options(codec_options=codec_options)
 
     _client = client
     _database = database

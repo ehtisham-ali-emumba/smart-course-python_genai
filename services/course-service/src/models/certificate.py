@@ -1,38 +1,34 @@
+import uuid as _uuid
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
 
 class Certificate(Base):
-    """Certificate model — stored in PostgreSQL."""
     __tablename__ = "certificates"
 
-    id = Column(Integer, primary_key=True, index=True)
-    enrollment_id = Column(
-        Integer,
-        ForeignKey("enrollments.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
+    id: Mapped[_uuid.UUID] = mapped_column(default=_uuid.uuid4, primary_key=True)
+    enrollment_id: Mapped[_uuid.UUID] = mapped_column(
+        ForeignKey("enrollments.id", ondelete="CASCADE"), unique=True
     )
-    certificate_number = Column(String(100), unique=True, nullable=False)
-    issue_date = Column(Date, nullable=False, default=date.today)
-    certificate_url = Column(String(500), nullable=True)
-    verification_code = Column(String(50), unique=True, nullable=False)
-    grade = Column(String(10), nullable=True)  # A, B, C
-    score_percentage = Column(Numeric(5, 2), nullable=True)
-    issued_by_id = Column(Integer, nullable=True)  # FK to users.id (instructor)
-    is_revoked = Column(Boolean, default=False, nullable=False)
-    revoked_at = Column(DateTime, nullable=True)
-    revoked_reason = Column(Text, nullable=True)
+    certificate_number: Mapped[str] = mapped_column(String(100), unique=True)
+    issue_date: Mapped[date] = mapped_column(server_default=func.current_date())
+    certificate_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    verification_code: Mapped[str] = mapped_column(String(50), unique=True)
+    grade: Mapped[str | None] = mapped_column(String(10), default=None)
+    score_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
+    issued_by_id: Mapped[_uuid.UUID | None] = mapped_column(default=None)
+    is_revoked: Mapped[bool] = mapped_column(default=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(default=None)
+    revoked_reason: Mapped[str | None] = mapped_column(Text, default=None)
 
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    __table_args__ = (
-        Index("idx_certificates_enrollment", "enrollment_id"),
-    )
+    __table_args__ = (Index("idx_certificates_enrollment", "enrollment_id"),)
 
     def __repr__(self) -> str:
         return f"<Certificate(id={self.id}, cert_number={self.certificate_number})>"

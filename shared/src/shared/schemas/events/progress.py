@@ -1,14 +1,16 @@
 """Progress event schemas."""
 
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
 class ProgressUpdatedPayload(BaseModel):
     """Payload for progress.updated event."""
 
-    user_id: int
-    enrollment_id: int
-    course_id: int
+    user_id: UUID
+    enrollment_id: UUID
+    course_id: UUID
     item_type: str
     item_id: str
     progress_percentage: float
@@ -17,6 +19,6 @@ class ProgressUpdatedPayload(BaseModel):
 class CourseCompletedPayload(BaseModel):
     """Payload for progress.course_completed event."""
 
-    user_id: int
-    enrollment_id: int
-    course_id: int
+    user_id: UUID
+    enrollment_id: UUID
+    course_id: UUID

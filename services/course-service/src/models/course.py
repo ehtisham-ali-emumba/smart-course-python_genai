@@ -1,41 +1,40 @@
+import uuid as _uuid
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, Numeric, String, Text
+from sqlalchemy import Index, Numeric, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
 
 class Course(Base):
-    """Course metadata model — stored in PostgreSQL."""
     __tablename__ = "courses"
 
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    slug = Column(String(255), unique=True, nullable=False, index=True)
-    description = Column(Text, nullable=True)
-    long_description = Column(Text, nullable=True)
-    instructor_id = Column(Integer, nullable=False, index=True)  # FK to instructor_profiles.id (in user-service DB)
-    category = Column(String(100), nullable=True, index=True)
-    level = Column(String(50), nullable=True)  # beginner, intermediate, advanced
-    language = Column(String(50), default="en", nullable=False)
-    duration_hours = Column(Numeric(5, 2), nullable=True)
-    price = Column(Numeric(10, 2), default=0.00, nullable=False)
-    currency = Column(String(3), default="USD", nullable=False)
-    thumbnail_url = Column(String(500), nullable=True)
-    status = Column(String(50), nullable=False, default="draft", index=True)  # draft, published, archived
-    published_at = Column(DateTime, nullable=True)
-    max_students = Column(Integer, nullable=True)
-    prerequisites = Column(Text, nullable=True)
-    learning_objectives = Column(Text, nullable=True)
-    is_deleted = Column(Boolean, default=False, nullable=False)
+    id: Mapped[_uuid.UUID] = mapped_column(default=_uuid.uuid4, primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    long_description: Mapped[str | None] = mapped_column(Text, default=None)
+    instructor_id: Mapped[_uuid.UUID] = mapped_column(index=True)
+    category: Mapped[str | None] = mapped_column(String(100), default=None, index=True)
+    level: Mapped[str | None] = mapped_column(String(50), default=None)
+    language: Mapped[str] = mapped_column(String(50), default="en")
+    duration_hours: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    status: Mapped[str] = mapped_column(String(50), default="draft", index=True)
+    published_at: Mapped[datetime | None] = mapped_column(default=None)
+    max_students: Mapped[int | None] = mapped_column(default=None)
+    prerequisites: Mapped[str | None] = mapped_column(Text, default=None)
+    learning_objectives: Mapped[str | None] = mapped_column(Text, default=None)
+    is_deleted: Mapped[bool] = mapped_column(default=False)
 
-    # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (
-        Index("idx_courses_published_at", "published_at"),
-    )
+    __table_args__ = (Index("idx_courses_published_at", "published_at"),)
 
     def __repr__(self) -> str:
         return f"<Course(id={self.id}, title={self.title}, status={self.status})>"

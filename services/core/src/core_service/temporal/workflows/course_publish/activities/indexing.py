@@ -19,8 +19,8 @@ AI_SERVICE = core_settings.AI_SERVICE_URL
 
 @dataclass
 class TriggerIndexingInput:
-    course_id: int
-    instructor_id: int
+    course_id: str
+    instructor_id: str
 
 
 @dataclass
@@ -32,8 +32,8 @@ class TriggerIndexingOutput:
 
 @dataclass
 class PollIndexingStatusInput:
-    course_id: int
-    instructor_id: int
+    course_id: str
+    instructor_id: str
 
 
 @dataclass
@@ -55,7 +55,7 @@ async def trigger_course_indexing(
     The ai-service requires instructor auth via X-User-ID / X-User-Role headers.
     Returns 202 Accepted with status "pending".
     """
-    activity.logger.info("trigger_course_indexing course_id=%d", input.course_id)
+    activity.logger.info("trigger_course_indexing course_id=%s", input.course_id)
 
     try:
         result = await post_json(
@@ -85,7 +85,7 @@ async def poll_course_indexing_status(
 
     Returns status: pending | indexing | indexed | failed
     """
-    activity.logger.info("poll_course_indexing_status course_id=%d", input.course_id)
+    activity.logger.info("poll_course_indexing_status course_id=%s", input.course_id)
 
     try:
         result = await get_json(

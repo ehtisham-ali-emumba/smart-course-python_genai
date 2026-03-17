@@ -1,7 +1,9 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_current_user_id, get_event_producer
+from api.dependencies import get_current_profile_id, get_event_producer
 from core.database import get_db
 from core.mongodb import get_mongodb
 from shared.kafka.producer import EventProducer
@@ -14,7 +16,7 @@ router = APIRouter()
 @router.post("", response_model=ProgressResponse, status_code=status.HTTP_201_CREATED)
 async def update_progress(
     data: ProgressCreate,
-    user_id: int = Depends(get_current_user_id),
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     pg_db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
 ):
@@ -42,8 +44,8 @@ async def update_progress(
 
 @router.get("/enrollment/{enrollment_id}", response_model=CourseProgressSummary)
 async def get_progress_by_enrollment(
-    enrollment_id: int,
-    user_id: int = Depends(get_current_user_id),
+    enrollment_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     pg_db: AsyncSession = Depends(get_db),
 ):
     """
@@ -60,8 +62,8 @@ async def get_progress_by_enrollment(
 
 @router.get("/course/{course_id}", response_model=CourseProgressSummary)
 async def get_progress_by_course(
-    course_id: int,
-    user_id: int = Depends(get_current_user_id),
+    course_id: _uuid.UUID,
+    user_id: _uuid.UUID = Depends(get_current_profile_id),
     pg_db: AsyncSession = Depends(get_db),
 ):
     """

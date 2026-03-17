@@ -1,4 +1,5 @@
 import uuid
+import uuid as _uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, TYPE_CHECKING
@@ -36,7 +37,7 @@ class ProgressService:
 
     async def update_progress(
         self,
-        user_id: int,
+        user_id: _uuid.UUID,
         data: ProgressCreate,
     ):
         """
@@ -55,7 +56,6 @@ class ProgressService:
             raise ValueError("Enrollment is not active")
 
         progress = await self.progress_repo.upsert_progress(
-            user_id=user_id,
             enrollment_id=data.enrollment_id,
             item_type=data.item_type,
             item_id=data.item_id,
@@ -95,8 +95,8 @@ class ProgressService:
 
     async def get_course_progress(
         self,
-        user_id: int,
-        course_id: int,
+        user_id: _uuid.UUID,
+        course_id: _uuid.UUID,
     ) -> CourseProgressSummary:
         """Get progress by course_id (convenience — looks up enrollment internally)."""
         enrollment = await self.enrollment_repo.get_by_student_and_course(user_id, course_id)
@@ -105,12 +105,12 @@ class ProgressService:
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active (dropped or suspended)")
 
-        return await self._build_progress_summary(user_id, enrollment.id, course_id)
+        return await self._build_progress_summary(enrollment.id, course_id)
 
     async def get_enrollment_progress(
         self,
-        user_id: int,
-        enrollment_id: int,
+        user_id: _uuid.UUID,
+        enrollment_id: _uuid.UUID,
     ) -> CourseProgressSummary:
         """Get progress by enrollment_id (primary — use when you have enrollment_id)."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
@@ -121,15 +121,14 @@ class ProgressService:
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active (dropped or suspended)")
 
-        return await self._build_progress_summary(user_id, enrollment.id, enrollment.course_id)
+        return await self._build_progress_summary(enrollment.id, enrollment.course_id)
 
     # ── INTERNAL HELPERS ──────────────────────────────────────────
 
     async def _build_progress_summary(
         self,
-        user_id: int,
-        enrollment_id: int,
-        course_id: int,
+        enrollment_id: _uuid.UUID,
+        course_id: _uuid.UUID,
     ) -> CourseProgressSummary:
         """
         Build course progress by aggregating lesson-level progress records.
@@ -214,7 +213,6 @@ class ProgressService:
 
         return CourseProgressSummary(
             course_id=course_id,
-            user_id=user_id,
             enrollment_id=enrollment_id,
             total_lessons=total_lessons_all,
             completed_lessons=completed_lessons_all,
@@ -268,8 +266,8 @@ class ProgressService:
 
     async def _check_auto_complete(
         self,
-        enrollment_id: int,
-        course_id: int,
+        enrollment_id: _uuid.UUID,
+        course_id: _uuid.UUID,
     ) -> None:
         """
         After each progress update, check if all lessons are at 100%.

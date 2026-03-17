@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,14 +21,14 @@ router = APIRouter()
 
 @router.get("/{course_id}/modules/{module_id}/quiz", response_model=QuizResponse)
 async def get_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
-    authenticated_user: tuple[int, str] = Depends(get_authenticated_user),
+    authenticated_user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     pg_db: AsyncSession = Depends(get_db),
 ):
-    user_id, role = authenticated_user
+    _, role, profile_id = authenticated_user
     service = ModuleQuizService(pg_db, get_mongodb())
-    quiz = await service.get_quiz_for_viewer(course_id, module_id, user_id, role)
+    quiz = await service.get_quiz_for_viewer(course_id, module_id, profile_id, role)
     if not quiz:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
     return QuizResponse(**quiz)
@@ -38,10 +40,10 @@ async def get_module_quiz(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: QuizCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())
@@ -58,10 +60,10 @@ async def create_module_quiz(
 
 @router.put("/{course_id}/modules/{module_id}/quiz", response_model=QuizResponse)
 async def replace_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: QuizUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())
@@ -76,10 +78,10 @@ async def replace_module_quiz(
 
 @router.patch("/{course_id}/modules/{module_id}/quiz", response_model=QuizResponse)
 async def patch_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: QuizPatch,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())
@@ -94,9 +96,9 @@ async def patch_module_quiz(
 
 @router.delete("/{course_id}/modules/{module_id}/quiz", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())
@@ -112,10 +114,10 @@ async def delete_module_quiz(
 
 @router.patch("/{course_id}/modules/{module_id}/quiz/publish", response_model=QuizResponse)
 async def publish_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: QuizPublishUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())
@@ -134,10 +136,10 @@ async def publish_module_quiz(
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_module_quiz(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: QuizGenerateRequest,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleQuizService(pg_db, get_mongodb())

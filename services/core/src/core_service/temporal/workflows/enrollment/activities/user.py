@@ -19,13 +19,13 @@ USER_SERVICE = core_settings.USER_SERVICE_URL
 
 @dataclass
 class FetchUserInput:
-    user_id: int
+    user_id: str
 
 
 @dataclass
 class FetchUserOutput:
     success: bool
-    user_id: int
+    user_id: str
     email: str | None = None
     name: str | None = None
     role: str | None = None
@@ -34,13 +34,13 @@ class FetchUserOutput:
 
 @dataclass
 class ValidateUserEnrollmentInput:
-    user_id: int
+    user_id: str
 
 
 @dataclass
 class ValidateUserEnrollmentOutput:
     is_valid: bool
-    user_id: int
+    user_id: str
     reason: str | None = None
 
 
@@ -67,7 +67,7 @@ async def fetch_user_details(input: FetchUserInput) -> FetchUserOutput:
             role=data.get("role", "student"),
         )
     except Exception as e:
-        logger.warning("fetch_user_details failed for user_id=%d: %s", input.user_id, e)
+        logger.warning("fetch_user_details failed for user_id=%s: %s", input.user_id, e)
         return FetchUserOutput(success=False, user_id=input.user_id, error=str(e))
 
 
@@ -104,7 +104,7 @@ async def validate_user_for_enrollment(
 
     except Exception as e:
         logger.error(
-            "validate_user_for_enrollment failed for user_id=%d: %s", input.user_id, e
+            "validate_user_for_enrollment failed for user_id=%s: %s", input.user_id, e
         )
         # Let Temporal retry via RetryPolicy
         raise

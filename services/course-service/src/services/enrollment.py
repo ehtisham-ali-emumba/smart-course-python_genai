@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid as _uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +17,7 @@ class EnrollmentService:
         self.enrollment_repo = EnrollmentRepository(db)
         self.course_repo = CourseRepository(db)
 
-    async def enroll_student(self, student_id: int, data: EnrollmentCreate) -> Enrollment:
+    async def enroll_student(self, student_id: _uuid.UUID, data: EnrollmentCreate) -> Enrollment:
         """Enroll a student in a course."""
         course = await self.course_repo.get_by_id(data.course_id)
         if not course or course.is_deleted:
@@ -42,32 +43,26 @@ class EnrollmentService:
         }
         return await self.enrollment_repo.create(enrollment_data)
 
-    async def get_enrollment(self, enrollment_id: int) -> Enrollment | None:
+    async def get_enrollment(self, enrollment_id: _uuid.UUID) -> Enrollment | None:
         """Get a single enrollment by ID. No cache — low frequency, user-specific."""
         return await self.enrollment_repo.get_by_id(enrollment_id)
 
     async def get_student_enrollments(
-        self, student_id: int, skip: int = 0, limit: int = 100
+        self, student_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ):
         """List all enrollments for a student. No cache — user-specific."""
-        enrollments = await self.enrollment_repo.get_by_student(
-            student_id, skip=skip, limit=limit
-        )
+        enrollments = await self.enrollment_repo.get_by_student(student_id, skip=skip, limit=limit)
         total = await self.enrollment_repo.count_by_student(student_id)
         return enrollments, total
 
-    async def get_course_enrollments(
-        self, course_id: int, skip: int = 0, limit: int = 100
-    ):
+    async def get_course_enrollments(self, course_id: _uuid.UUID, skip: int = 0, limit: int = 100):
         """List all enrollments for a course (instructor view). No cache."""
-        enrollments = await self.enrollment_repo.get_by_course(
-            course_id, skip=skip, limit=limit
-        )
+        enrollments = await self.enrollment_repo.get_by_course(course_id, skip=skip, limit=limit)
         total = await self.enrollment_repo.count_by_course(course_id)
         return enrollments, total
 
     async def drop_enrollment(
-        self, enrollment_id: int, student_id: int
+        self, enrollment_id: _uuid.UUID, student_id: _uuid.UUID
     ) -> Enrollment | None:
         """Student drops a course."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
@@ -85,7 +80,7 @@ class EnrollmentService:
         )
 
     async def undrop_enrollment(
-        self, enrollment_id: int, student_id: int
+        self, enrollment_id: _uuid.UUID, student_id: _uuid.UUID
     ) -> Enrollment | None:
         """Student re-enrolls after dropping (reactivates enrollment)."""
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)

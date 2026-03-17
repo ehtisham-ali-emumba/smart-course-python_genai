@@ -20,23 +20,24 @@ COURSE_SERVICE = core_settings.COURSE_SERVICE_URL
 
 @dataclass
 class FetchCourseInput:
-    course_id: int
+    course_id: str
 
 
 @dataclass
 class FetchCourseOutput:
     success: bool
-    course_id: int
+    course_id: str
     title: str | None = None
-    instructor_id: int | None = None
+    instructor_id: str | None = None
     status: str | None = None
     error: str | None = None
 
 
 @dataclass
 class EnrollInCourseInput:
-    student_id: int
-    course_id: int
+    student_id: str
+    user_id: str
+    course_id: str
     payment_amount: float = 0
     enrollment_source: str = "web"
 
@@ -44,21 +45,21 @@ class EnrollInCourseInput:
 @dataclass
 class EnrollInCourseOutput:
     success: bool
-    enrollment_id: int | None = None
+    enrollment_id: str | None = None
     enrollment_status: str | None = None
     error: str | None = None
 
 
 @dataclass
 class FetchCourseModulesInput:
-    course_id: int
-    instructor_id: int = 0  # used as X-User-ID for content endpoint
+    course_id: str
+    instructor_id: str = ""  # used as X-Profile-ID for content endpoint
 
 
 @dataclass
 class FetchCourseModulesOutput:
     success: bool
-    course_id: int
+    course_id: str
     modules: list[dict] | None = None
     module_count: int = 0
     error: str | None = None
@@ -86,7 +87,7 @@ async def fetch_course_details(input: FetchCourseInput) -> FetchCourseOutput:
         )
     except Exception as e:
         logger.warning(
-            "fetch_course_details failed for course_id=%d: %s", input.course_id, e
+            "fetch_course_details failed for course_id=%s: %s", input.course_id, e
         )
         return FetchCourseOutput(success=False, course_id=input.course_id, error=str(e))
 
@@ -103,13 +104,18 @@ async def enroll_in_course(
     - Is idempotent (returns existing enrollment if already enrolled)
     """
     logger.info(
-        "enroll_in_course: student_id=%d, course_id=%d",
+        "enroll_in_course: user_id=%s, student_id=%s, course_id=%s",
+        input.user_id,
         input.student_id,
         input.course_id,
     )
 
     url = f"{COURSE_SERVICE}/course/enrollments/internal/create"
-    headers = {"X-User-ID": str(input.student_id), "X-User-Role": "student"}
+    headers = {
+        "X-User-ID": str(input.user_id),
+        "X-User-Role": "student",
+        "X-Profile-ID": str(input.student_id),
+    }
     payload = {
         "course_id": input.course_id,
         "payment_amount": input.payment_amount,
@@ -136,7 +142,7 @@ async def enroll_in_course(
 
                 # Any non-2xx error
                 logger.error(
-                    "enroll_in_course failed %d for student=%d course=%d: %s",
+                    "enroll_in_course failed %d for student=%s course=%s: %s",
                     resp.status,
                     input.student_id,
                     input.course_id,
@@ -149,7 +155,7 @@ async def enroll_in_course(
 
     except Exception as e:
         logger.error(
-            "enroll_in_course failed for student=%d course=%d: %s",
+            "enroll_in_course failed for student=%s course=%s: %s",
             input.student_id,
             input.course_id,
             e,
@@ -167,8 +173,9 @@ async def fetch_course_modules(
     Requires X-User-ID header (uses instructor_id if provided, else student-style).
     """
     url = f"{COURSE_SERVICE}/courses/{input.course_id}/content"
-    uid = input.instructor_id if input.instructor_id else 1
+    uid = input.instructor_id if input.instructor_id else ""
     headers = {
+        "X-Profile-ID": str(uid),
         "X-User-ID": str(uid),
         "X-User-Role": "instructor" if input.instructor_id else "student",
     }
@@ -184,7 +191,7 @@ async def fetch_course_modules(
         )
     except Exception as e:
         logger.warning(
-            "fetch_course_modules failed for course_id=%d: %s", input.course_id, e
+            "fetch_course_modules failed for course_id=%s: %s", input.course_id, e
         )
         return FetchCourseModulesOutput(
             success=False, course_id=input.course_id, error=str(e)

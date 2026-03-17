@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+import uuid as _uuid
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,15 +29,17 @@ class ModuleQuizService:
         self.content_repo = CourseContentRepository(mongo_db)
         self.quiz_repo = ModuleQuizRepository(mongo_db)
 
-    async def get_published_quiz(self, course_id: int, module_id: str) -> dict[str, Any] | None:
+    async def get_published_quiz(
+        self, course_id: _uuid.UUID, module_id: str
+    ) -> dict[str, Any] | None:
         doc = await self.quiz_repo.get_published_by_course_module(course_id, module_id)
         return self._to_response(doc) if doc else None
 
     async def get_quiz_for_viewer(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
-        viewer_id: int,
+        viewer_id: _uuid.UUID,
         viewer_role: str,
     ) -> dict[str, Any] | None:
         if viewer_role == "admin":
@@ -48,7 +51,7 @@ class ModuleQuizService:
             if (
                 course is not None
                 and not bool(getattr(course, "is_deleted", False))
-                and int(getattr(course, "instructor_id")) == viewer_id
+                and getattr(course, "instructor_id") == viewer_id
             ):
                 doc = await self.quiz_repo.get_active_by_course_module(course_id, module_id)
                 return self._to_response(doc) if doc else None
@@ -57,10 +60,10 @@ class ModuleQuizService:
 
     async def create_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: QuizCreate,
-        instructor_id: int,
+        instructor_id: _uuid.UUID,
     ) -> dict[str, Any]:
         await self._ensure_owned_course(course_id, instructor_id)
         await self._ensure_module_exists(course_id, module_id)
@@ -96,10 +99,10 @@ class ModuleQuizService:
 
     async def replace_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: QuizUpdate,
-        instructor_id: int,
+        instructor_id: _uuid.UUID,
     ) -> dict[str, Any]:
         await self._ensure_owned_course(course_id, instructor_id)
         await self._ensure_module_exists(course_id, module_id)
@@ -131,10 +134,10 @@ class ModuleQuizService:
 
     async def patch_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: QuizPatch,
-        instructor_id: int,
+        instructor_id: _uuid.UUID,
     ) -> dict[str, Any]:
         await self._ensure_owned_course(course_id, instructor_id)
         await self._ensure_module_exists(course_id, module_id)
@@ -161,10 +164,10 @@ class ModuleQuizService:
 
     async def publish_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: QuizPublishUpdate,
-        instructor_id: int,
+        instructor_id: _uuid.UUID,
     ) -> dict[str, Any]:
         await self._ensure_owned_course(course_id, instructor_id)
 
@@ -189,16 +192,18 @@ class ModuleQuizService:
             raise LookupError("Quiz not found")
         return self._to_response(updated)
 
-    async def delete_quiz(self, course_id: int, module_id: str, instructor_id: int) -> bool:
+    async def delete_quiz(
+        self, course_id: _uuid.UUID, module_id: str, instructor_id: _uuid.UUID
+    ) -> bool:
         await self._ensure_owned_course(course_id, instructor_id)
         return await self.quiz_repo.soft_delete(course_id, module_id)
 
     async def generate_quiz(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         payload: QuizGenerateRequest,
-        instructor_id: int,
+        instructor_id: _uuid.UUID,
     ) -> dict[str, Any]:
         await self._ensure_owned_course(course_id, instructor_id)
 
@@ -246,17 +251,17 @@ class ModuleQuizService:
         replaced = await self.quiz_repo.replace(course_id, module_id, document)
         return self._to_response(replaced)
 
-    async def _ensure_owned_course(self, course_id: int, instructor_id: int) -> None:
+    async def _ensure_owned_course(self, course_id: _uuid.UUID, instructor_id: _uuid.UUID) -> None:
         course = await self.course_repo.get_by_id(course_id)
         if course is None or bool(getattr(course, "is_deleted", False)):
             raise LookupError("Course not found")
-        if int(getattr(course, "instructor_id")) != instructor_id:
+        if getattr(course, "instructor_id") != instructor_id:
             raise PermissionError("You do not own this course")
 
-    async def _ensure_module_exists(self, course_id: int, module_id: str) -> None:
+    async def _ensure_module_exists(self, course_id: _uuid.UUID, module_id: str) -> None:
         await self._get_module_or_404(course_id, module_id)
 
-    async def _get_module_or_404(self, course_id: int, module_id: str) -> dict[str, Any]:
+    async def _get_module_or_404(self, course_id: _uuid.UUID, module_id: str) -> dict[str, Any]:
         content = await self.content_repo.get_by_course_id(course_id)
         if not content:
             raise LookupError("Course content not found")
@@ -298,7 +303,7 @@ class ModuleQuizService:
     def _next_authorship(
         self,
         existing: dict[str, Any] | None,
-        editor_id: int,
+        editor_id: _uuid.UUID,
         generated: bool,
         source_lesson_ids: list[str],
     ) -> dict[str, Any]:

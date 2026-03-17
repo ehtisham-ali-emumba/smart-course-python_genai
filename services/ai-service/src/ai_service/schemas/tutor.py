@@ -3,13 +3,13 @@
 from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 class CreateSessionRequest(BaseModel):
     """Request body for POST /sessions."""
 
-    course_id: int
+    course_id: UUID
     module_id: Optional[str] = Field(
         None,
         description="Scope the tutor to a specific module.",
@@ -31,8 +31,8 @@ class SessionResponse(BaseModel):
         default_factory=lambda: uuid4().hex,
         description="Unique session identifier.",
     )
-    student_id: int
-    course_id: int
+    student_id: UUID
+    course_id: UUID
     module_id: Optional[str] = None
     lesson_id: Optional[str] = None
     is_active: bool = True
@@ -75,7 +75,7 @@ class RetrievedSource(BaseModel):
 class SessionScope(BaseModel):
     """Tracks the active scope of a tutor session."""
 
-    course_id: int
+    course_id: UUID
     module_id: Optional[str] = None
     lesson_id: Optional[str] = None
 

@@ -6,6 +6,7 @@ everything into structured text ready for LLM or embedding consumption.
 """
 
 import structlog
+import uuid as _uuid
 
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.resource_extractor import ResourceTextExtractor
@@ -26,7 +27,7 @@ class ContentExtractor:
 
     async def extract_module_content(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
         module_id: str,
         lesson_ids: list[str] | None = None,
     ) -> dict | None:
@@ -89,13 +90,13 @@ class ContentExtractor:
 
     async def extract_course_content(
         self,
-        course_id: int,
+        course_id: _uuid.UUID,
     ) -> dict | None:
         """Extract all text content for an entire course (all modules, all lessons).
 
         Returns:
             Dict with keys:
-              - course_id: int
+                            - course_id: UUID
               - modules: list[dict] — each module's extraction result
               - total_lessons: int
             Returns None if course not found.

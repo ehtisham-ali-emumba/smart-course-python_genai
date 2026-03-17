@@ -1,3 +1,4 @@
+import uuid as _uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional, cast
@@ -34,12 +35,12 @@ class CourseService:
 
     # ── READS (with cache) ────────────────────────────────────────
 
-    async def get_course(self, course_id: int) -> dict | None:
+    async def get_course(self, course_id: _uuid.UUID) -> dict | None:
         """Get a single course by ID (excludes soft-deleted).
         Always returns dict or None — never ORM. Cache handled internally.
         """
         # 1. Try cache
-        cache_key = f"course:detail:{course_id}"
+        cache_key = f"course:detail:{str(course_id)}"
         cached = await cache_get(cache_key)
         if cached is not None:
             return cached
@@ -86,7 +87,7 @@ class CourseService:
         return items, total
 
     async def list_instructor_courses(
-        self, instructor_id: int, skip: int = 0, limit: int = 100
+        self, instructor_id: _uuid.UUID, skip: int = 0, limit: int = 100
     ) -> tuple[list[dict], int]:
         """List all courses by an instructor. No cache — instructor-specific, low reuse.
         Returns (list[dict], total) for consistent API handling.
@@ -95,7 +96,9 @@ class CourseService:
         total = await self.course_repo.count_by_instructor(instructor_id)
         return [_course_to_dict(c) for c in courses], total
 
-    async def get_instructor_course(self, course_id: int, instructor_id: int) -> dict | None:
+    async def get_instructor_course(
+        self, course_id: _uuid.UUID, instructor_id: _uuid.UUID
+    ) -> dict | None:
         """Validate that a single course exists and is owned by the given instructor.
 
         Used by internal services (e.g. AI service) to confirm instructor
@@ -107,13 +110,13 @@ class CourseService:
         course = await self.course_repo.get_by_id(course_id)
         if not course or bool(course.is_deleted):
             return None
-        if cast(int, course.instructor_id) != instructor_id:
+        if course.instructor_id != instructor_id:
             return None
         return _course_to_dict(course)
 
     # ── WRITES (with cache invalidation) ──────────────────────────
 
-    async def create_course(self, data: CourseCreate, instructor_id: int) -> dict:
+    async def create_course(self, data: CourseCreate, instructor_id: _uuid.UUID) -> dict:
         """Create a new course. instructor_id comes from X-User-ID header.
         Returns dict for consistent API handling.
         """
@@ -132,7 +135,7 @@ class CourseService:
         return _course_to_dict(course)
 
     async def update_course(
-        self, course_id: int, data: CourseUpdate, instructor_id: int
+        self, course_id: _uuid.UUID, data: CourseUpdate, instructor_id: _uuid.UUID
     ) -> dict | None:
         """Update course details. Invalidates detail and list caches.
         Returns dict or None for consistent API handling.
@@ -140,7 +143,7 @@ class CourseService:
         course = await self.course_repo.get_by_id(course_id)
         if not course or bool(course.is_deleted):
             return None
-        if cast(int, course.instructor_id) != instructor_id:
+        if course.instructor_id != instructor_id:
             raise PermissionError("You do not own this course")
 
         update_data = data.model_dump(exclude_unset=True, mode="python")
@@ -152,13 +155,13 @@ class CourseService:
         result = await self.course_repo.update(course_id, update_data)
 
         # Invalidate caches
-        await cache_delete(f"course:detail:{course_id}")
+        await cache_delete(f"course:detail:{str(course_id)}")
         await cache_delete_pattern("course:published:*")
 
         return _course_to_dict(result) if result else None
 
     async def update_status(
-        self, course_id: int, data: CourseStatusUpdate, instructor_id: int
+        self, course_id: _uuid.UUID, data: CourseStatusUpdate, instructor_id: _uuid.UUID
     ) -> dict | None:
         """Change course status (draft → published → archived).
         Returns dict or None for consistent API handling.
@@ -166,7 +169,7 @@ class CourseService:
         course = await self.course_repo.get_by_id(course_id)
         if not course or bool(course.is_deleted):
             return None
-        if cast(int, course.instructor_id) != instructor_id:
+        if course.instructor_id != instructor_id:
             raise PermissionError("You do not own this course")
 
         update_data: dict[str, Any] = {"status": data.status}
@@ -176,12 +179,14 @@ class CourseService:
         result = await self.course_repo.update(course_id, update_data)
 
         # Invalidate caches — status change affects listings
-        await cache_delete(f"course:detail:{course_id}")
+        await cache_delete(f"course:detail:{str(course_id)}")
         await cache_delete_pattern("course:published:*")
 
         return _course_to_dict(result) if result else None
 
-    async def validate_course_for_publish(self, course_id: int, instructor_id: int) -> dict:
+    async def validate_course_for_publish(
+        self, course_id: _uuid.UUID, instructor_id: _uuid.UUID
+    ) -> dict:
         """Validate a course is ready for publishing WITHOUT changing DB state.
 
         Raises ValueError/PermissionError (which can be caught as exceptions) if validation fails.
@@ -190,10 +195,12 @@ class CourseService:
         course = await self.course_repo.get_by_id(course_id)
         if not course or bool(course.is_deleted):
             raise ValueError("Course not found")
-        if cast(int, course.instructor_id) != instructor_id:
+        if course.instructor_id != instructor_id:
             raise PermissionError("You do not own this course")
         if str(course.status) == "published":
             raise ValueError("Course is already published")
+        if str(course.status) == "publish_requested":
+            raise ValueError("Course publish is already in progress")
 
         # Validate course has required fields
         if course.title is None or not str(course.title).strip():
@@ -206,7 +213,7 @@ class CourseService:
 
         return _course_to_dict(course)
 
-    async def force_publish(self, course_id: int) -> dict | None:
+    async def force_publish(self, course_id: _uuid.UUID) -> dict | None:
         """Mark course as published (called by internal workflow endpoint).
 
         This is called by Temporal after RAG indexing completes.
@@ -216,22 +223,22 @@ class CourseService:
             "published_at": datetime.utcnow(),
         }
         result = await self.course_repo.update(course_id, update_data)
-        await cache_delete(f"course:detail:{course_id}")
+        await cache_delete(f"course:detail:{str(course_id)}")
         await cache_delete_pattern("course:published:*")
         return _course_to_dict(result) if result else None
 
-    async def delete_course(self, course_id: int, instructor_id: int) -> bool:
+    async def delete_course(self, course_id: _uuid.UUID, instructor_id: _uuid.UUID) -> bool:
         """Soft-delete a course. Invalidates all course caches."""
         course = await self.course_repo.get_by_id(course_id)
         if not course or bool(course.is_deleted):
             return False
-        if cast(int, course.instructor_id) != instructor_id:
+        if course.instructor_id != instructor_id:
             raise PermissionError("You do not own this course")
 
         await self.course_repo.soft_delete(course_id)
 
         # Invalidate caches
-        await cache_delete(f"course:detail:{course_id}")
+        await cache_delete(f"course:detail:{str(course_id)}")
         await cache_delete_pattern("course:published:*")
 
         return True

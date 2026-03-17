@@ -1,12 +1,14 @@
 """User event schemas."""
 
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
 class UserRegisteredPayload(BaseModel):
     """Payload for user.registered event."""
 
-    user_id: str
+    user_id: UUID
     email: str
     first_name: str
     last_name: str
@@ -15,12 +17,12 @@ class UserRegisteredPayload(BaseModel):
 class UserLoginPayload(BaseModel):
     """Payload for user.login event."""
 
-    user_id: str
+    user_id: UUID
     email: str
 
 
 class UserProfileUpdatedPayload(BaseModel):
     """Payload for user.profile_updated event."""
 
-    user_id: str
+    user_id: UUID
     fields_changed: list[str]

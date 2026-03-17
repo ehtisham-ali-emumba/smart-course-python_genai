@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,14 +21,14 @@ router = APIRouter()
 
 @router.get("/{course_id}/modules/{module_id}/summary", response_model=SummaryResponse)
 async def get_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
-    authenticated_user: tuple[int, str] = Depends(get_authenticated_user),
+    authenticated_user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     pg_db: AsyncSession = Depends(get_db),
 ):
-    user_id, role = authenticated_user
+    _, role, profile_id = authenticated_user
     service = ModuleSummaryService(pg_db, get_mongodb())
-    summary = await service.get_summary_for_viewer(course_id, module_id, user_id, role)
+    summary = await service.get_summary_for_viewer(course_id, module_id, profile_id, role)
     if not summary:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not found")
     return SummaryResponse(**summary)
@@ -38,10 +40,10 @@ async def get_module_summary(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: SummaryCreate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())
@@ -58,10 +60,10 @@ async def create_module_summary(
 
 @router.put("/{course_id}/modules/{module_id}/summary", response_model=SummaryResponse)
 async def replace_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: SummaryUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())
@@ -76,10 +78,10 @@ async def replace_module_summary(
 
 @router.patch("/{course_id}/modules/{module_id}/summary", response_model=SummaryResponse)
 async def patch_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: SummaryPatch,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())
@@ -94,9 +96,9 @@ async def patch_module_summary(
 
 @router.delete("/{course_id}/modules/{module_id}/summary", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())
@@ -112,10 +114,10 @@ async def delete_module_summary(
 
 @router.patch("/{course_id}/modules/{module_id}/summary/publish", response_model=SummaryResponse)
 async def publish_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: SummaryPublishUpdate,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())
@@ -134,10 +136,10 @@ async def publish_module_summary(
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_module_summary(
-    course_id: int,
+    course_id: _uuid.UUID,
     module_id: str,
     payload: SummaryGenerateRequest,
-    instructor_id: int = Depends(require_instructor),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
     pg_db: AsyncSession = Depends(get_db),
 ):
     service = ModuleSummaryService(pg_db, get_mongodb())

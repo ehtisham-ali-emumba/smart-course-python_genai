@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ProgressCreate(BaseModel):
     """Schema for creating or updating progress on a lesson/quiz/summary."""
 
-    enrollment_id: int
+    enrollment_id: UUID
     item_type: str = Field(..., pattern=r"^(lesson|quiz|summary|module_quiz|module_summary)$")
     item_id: str
     progress_percentage: Decimal = Field(..., ge=0, le=100)
@@ -23,9 +24,8 @@ class ProgressCreate(BaseModel):
 class ProgressResponse(BaseModel):
     """Schema for a single progress record."""
 
-    id: int
-    user_id: int
-    enrollment_id: int
+    id: UUID
+    enrollment_id: UUID
     item_type: str
     item_id: str
     progress_percentage: Decimal
@@ -51,9 +51,8 @@ class ModuleProgressDetail(BaseModel):
 class CourseProgressSummary(BaseModel):
     """Computed course-level progress (aggregated from lesson-level data)."""
 
-    course_id: int
-    user_id: int
-    enrollment_id: int
+    course_id: UUID
+    enrollment_id: UUID
     total_lessons: int
     completed_lessons: int
     progress_percentage: Decimal

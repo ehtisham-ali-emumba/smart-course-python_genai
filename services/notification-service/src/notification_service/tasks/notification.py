@@ -10,7 +10,7 @@ from notification_service.worker import celery_app
     name="notification_service.tasks.notification.create_in_app_notification",
 )
 def create_in_app_notification(
-    self, user_id: int, title: str, message: str, notification_type: str = "system"
+    self, user_id: str, title: str, message: str, notification_type: str = "system"
 ):
     """
     Triggered by: Any event that needs in-app notification
@@ -38,7 +38,7 @@ def create_in_app_notification(
 @celery_app.task(
     bind=True, max_retries=3, name="notification_service.tasks.notification.send_push_notification"
 )
-def send_push_notification(self, user_id: int, title: str, body: str, data: dict = None):
+def send_push_notification(self, user_id: str, title: str, body: str, data: dict = None):
     """
     Future: Send push notification to mobile device
     Requires: FCM/APNs integration
