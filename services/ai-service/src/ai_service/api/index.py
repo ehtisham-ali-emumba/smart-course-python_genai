@@ -23,7 +23,7 @@ router = APIRouter()
 async def build_course_index(
     course_id: _uuid.UUID,
     request: BuildIndexRequest | None = None,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for entire course.
@@ -31,7 +31,7 @@ async def build_course_index(
     Args:
         course_id: Course ID from path parameter
         request: Optional index build request with force_rebuild flag
-        user_id: Authenticated instructor user ID (from dependency)
+        _instructor: Authenticated instructor context (user_id, profile_id)
         index_service: IndexService from dependency injection
 
     Returns:
@@ -51,7 +51,7 @@ async def build_module_index(
     module_id: str,
     course_id: _uuid.UUID,
     request: BuildIndexRequest | None = None,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
     """Build index for a single module.
@@ -60,7 +60,7 @@ async def build_module_index(
         module_id: Module ID from path parameter (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
         request: Optional index build request with force_rebuild flag
-        user_id: Authenticated instructor user ID (from dependency)
+        _instructor: Authenticated instructor context (user_id, profile_id)
         index_service: IndexService from dependency injection
 
     Returns:
@@ -78,14 +78,14 @@ async def build_module_index(
 )
 async def get_course_index_status(
     course_id: _uuid.UUID,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a course.
 
     Args:
         course_id: Course ID from path parameter
-        user_id: Authenticated instructor user ID (from dependency)
+        _instructor: Authenticated instructor context (user_id, profile_id)
         index_service: IndexService from dependency injection
 
     Returns:
@@ -102,7 +102,7 @@ async def get_course_index_status(
 async def get_module_index_status(
     module_id: str,
     course_id: _uuid.UUID,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexStatusResponse:
     """Get index status for a module.
@@ -110,7 +110,7 @@ async def get_module_index_status(
     Args:
         module_id: Module ID from path parameter (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
-        user_id: Authenticated instructor user ID (from dependency)
+        _instructor: Authenticated instructor context (user_id, profile_id)
         index_service: IndexService from dependency injection
 
     Returns:

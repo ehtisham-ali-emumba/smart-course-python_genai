@@ -57,6 +57,7 @@ class InstructorService:
         course_id: _uuid.UUID,
         module_id: str,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> None:
         """Validate course existence, instructor ownership, and module existence.
 
@@ -67,12 +68,13 @@ class InstructorService:
             course_id: Course ID to validate
             module_id: Module ID to validate (checked against MongoDB)
             user_id: Requesting instructor user ID
+            profile_id: Requesting instructor profile ID
         """
         log = logger.bind(course_id=course_id, module_id=module_id, user_id=user_id)
 
         # 1. Verify course exists via course-service
         log.debug("Validating course existence")
-        course = await self.course_client.get_course(course_id, user_id)
+        course = await self.course_client.get_course(course_id, user_id, profile_id)
         if course is None:
             log.warning("Course not found")
             raise HTTPException(
@@ -82,7 +84,7 @@ class InstructorService:
 
         # 2. Verify the requesting user is the course owner
         instructor_id_raw = course.get("instructor_id")
-        if not instructor_id_raw or _uuid.UUID(str(instructor_id_raw)) != user_id:
+        if not instructor_id_raw or _uuid.UUID(str(instructor_id_raw)) != profile_id:
             log.warning(
                 "Forbidden: user is not the course owner",
                 course_instructor_id=instructor_id_raw,
@@ -110,6 +112,7 @@ class InstructorService:
         module_id: str,
         request: GenerateSummaryRequest,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> GenerateSummaryResponse:
         """Generate a summary for a module (async task).
 
@@ -121,6 +124,7 @@ class InstructorService:
             module_id: Module ID
             request: Summary generation request
             user_id: Authenticated instructor user ID
+            profile_id: Authenticated instructor profile ID
 
         Returns:
             GenerateSummaryResponse with status PENDING
@@ -129,7 +133,7 @@ class InstructorService:
         log.info("Summary generation requested")
 
         # Guard: validate before firing the background task
-        await self._validate_course_ownership_and_module(course_id, module_id, user_id)
+        await self._validate_course_ownership_and_module(course_id, module_id, user_id, profile_id)
 
         log.info(
             "Validation passed — dispatching summary generation task",
@@ -137,7 +141,9 @@ class InstructorService:
         )
 
         # Fire background task (no await)
-        asyncio.create_task(self._run_summary_graph(course_id, module_id, request, user_id))
+        asyncio.create_task(
+            self._run_summary_graph(course_id, module_id, request, user_id, profile_id)
+        )
 
         return GenerateSummaryResponse(
             course_id=course_id,
@@ -154,6 +160,7 @@ class InstructorService:
         module_id: str,
         request: GenerateSummaryRequest,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> None:
         """Background task: invoke summary generation LangGraph, handle completion/failure."""
         try:
@@ -172,6 +179,7 @@ class InstructorService:
                     "course_id": course_id,
                     "module_id": module_id,
                     "user_id": user_id,
+                    "profile_id": profile_id,
                     "source_lesson_ids": request.source_lesson_ids,
                     "include_glossary": request.include_glossary,
                     "include_key_points": request.include_key_points,
@@ -216,6 +224,7 @@ class InstructorService:
         module_id: str,
         request: GenerateQuizRequest,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> GenerateQuizResponse:
         """Generate quiz questions for a module (async task).
 
@@ -227,6 +236,7 @@ class InstructorService:
             module_id: Module ID
             request: Quiz generation request
             user_id: Authenticated instructor user ID
+            profile_id: Authenticated instructor profile ID
 
         Returns:
             GenerateQuizResponse with status PENDING
@@ -235,7 +245,7 @@ class InstructorService:
         log.info("Quiz generation requested")
 
         # Guard: validate before firing the background task
-        await self._validate_course_ownership_and_module(course_id, module_id, user_id)
+        await self._validate_course_ownership_and_module(course_id, module_id, user_id, profile_id)
 
         log.info(
             "Validation passed — dispatching quiz generation task",
@@ -245,7 +255,9 @@ class InstructorService:
         )
 
         # Fire background task (no await)
-        asyncio.create_task(self._run_quiz_graph(course_id, module_id, request, user_id))
+        asyncio.create_task(
+            self._run_quiz_graph(course_id, module_id, request, user_id, profile_id)
+        )
 
         return GenerateQuizResponse(
             course_id=course_id,
@@ -262,6 +274,7 @@ class InstructorService:
         module_id: str,
         request: GenerateQuizRequest,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> None:
         """Background task: invoke quiz generation LangGraph, handle completion/failure."""
         try:
@@ -280,6 +293,7 @@ class InstructorService:
                     "course_id": course_id,
                     "module_id": module_id,
                     "user_id": user_id,
+                    "profile_id": profile_id,
                     "source_lesson_ids": request.source_lesson_ids,
                     "num_questions": request.num_questions,
                     "difficulty": request.difficulty.value if request.difficulty else None,

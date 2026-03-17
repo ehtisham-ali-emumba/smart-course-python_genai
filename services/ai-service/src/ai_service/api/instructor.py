@@ -56,7 +56,7 @@ async def generate_summary(
     module_id: str,
     course_id: _uuid.UUID,
     request: GenerateSummaryRequest,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerateSummaryResponse:
     """Generate a summary for a module.
@@ -65,12 +65,14 @@ async def generate_summary(
         module_id: Module ID (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
         request: Summary generation request body
-        user_id: Authenticated instructor user ID (from dependency)
+        instructor: Authenticated instructor context (user_id, profile_id)
         service: InstructorService instance (dependency injection)
 
     Returns:
         GenerateSummaryResponse with generation status PENDING (work runs in background)
     """
+    user_id, profile_id = instructor
+
     logger.info(
         "Received generate-summary request",
         course_id=course_id,
@@ -80,7 +82,7 @@ async def generate_summary(
         include_glossary=request.include_glossary,
         include_key_points=request.include_key_points,
     )
-    return await service.generate_summary(course_id, module_id, request, user_id)
+    return await service.generate_summary(course_id, module_id, request, user_id, profile_id)
 
 
 @router.post(
@@ -92,7 +94,7 @@ async def generate_quiz(
     module_id: str,
     course_id: _uuid.UUID,
     request: GenerateQuizRequest,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerateQuizResponse:
     """Generate quiz questions for a module.
@@ -101,12 +103,14 @@ async def generate_quiz(
         module_id: Module ID (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
         request: Quiz generation request body
-        user_id: Authenticated instructor user ID (from dependency)
+        instructor: Authenticated instructor context (user_id, profile_id)
         service: InstructorService instance (dependency injection)
 
     Returns:
         GenerateQuizResponse with generation status PENDING (work runs in background)
     """
+    user_id, profile_id = instructor
+
     logger.info(
         "Received generate-quiz request",
         course_id=course_id,
@@ -117,7 +121,7 @@ async def generate_quiz(
         difficulty=request.difficulty,
         question_types=request.question_types,
     )
-    return await service.generate_quiz(course_id, module_id, request, user_id)
+    return await service.generate_quiz(course_id, module_id, request, user_id, profile_id)
 
 
 @router.get(
@@ -128,7 +132,7 @@ async def generate_quiz(
 async def get_generation_status(
     module_id: str,
     course_id: _uuid.UUID,
-    user_id: _uuid.UUID = Depends(require_instructor),
+    _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     service: InstructorService = Depends(get_instructor_service),
 ) -> GenerationStatusResponse:
     """Check generation status for a module.
@@ -136,7 +140,7 @@ async def get_generation_status(
     Args:
         module_id: Module ID (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
-        user_id: Authenticated instructor user ID (from dependency)
+        _instructor: Authenticated instructor context (user_id, profile_id)
         service: InstructorService instance (dependency injection)
 
     Returns:

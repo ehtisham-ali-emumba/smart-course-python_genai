@@ -21,6 +21,7 @@ class CourseServiceClient:
         module_id: str,
         payload: dict,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> dict | None:
         """Save a summary to course-service via POST or PUT.
 
@@ -29,12 +30,17 @@ class CourseServiceClient:
             module_id: Module ID
             payload: Summary creation payload
             user_id: User ID for authorization headers
+            profile_id: Profile ID for authorization headers
 
         Returns:
             Response JSON on success, None on failure
         """
         url = f"{self.base_url}/courses/{course_id}/modules/{module_id}/summary"
-        headers = {"X-User-ID": str(user_id), "X-User-Role": "instructor"}
+        headers = {
+            "X-User-ID": str(user_id),
+            "X-User-Role": "instructor",
+            "X-Profile-ID": str(profile_id),
+        }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
@@ -63,6 +69,7 @@ class CourseServiceClient:
         module_id: str,
         payload: dict,
         user_id: _uuid.UUID,
+        profile_id: _uuid.UUID,
     ) -> dict | None:
         """Save a quiz to course-service via POST or PUT.
 
@@ -71,12 +78,17 @@ class CourseServiceClient:
             module_id: Module ID
             payload: Quiz creation payload
             user_id: User ID for authorization headers
+            profile_id: Profile ID for authorization headers
 
         Returns:
             Response JSON on success, None on failure
         """
         url = f"{self.base_url}/courses/{course_id}/modules/{module_id}/quiz"
-        headers = {"X-User-ID": str(user_id), "X-User-Role": "instructor"}
+        headers = {
+            "X-User-ID": str(user_id),
+            "X-User-Role": "instructor",
+            "X-Profile-ID": str(profile_id),
+        }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
@@ -113,7 +125,9 @@ class CourseServiceClient:
                 )
                 return None
 
-    async def get_course(self, course_id: _uuid.UUID, user_id: _uuid.UUID) -> dict | None:
+    async def get_course(
+        self, course_id: _uuid.UUID, user_id: _uuid.UUID, profile_id: _uuid.UUID
+    ) -> dict | None:
         """Validate instructor ownership of a single course via course-service.
 
         Hits the instructor-scoped endpoint so the course-service enforces
@@ -123,13 +137,18 @@ class CourseServiceClient:
         Args:
             course_id: Course ID to look up
             user_id: Instructor user ID (sent as X-User-ID header)
+            profile_id: Instructor profile ID (sent as X-Profile-ID header)
 
         Returns:
             Course dict (includes instructor_id) on success, None if not found,
             not owned, or on error
         """
         url = f"{self.base_url}/courses/my-courses/{course_id}"
-        headers = {"X-User-ID": str(user_id), "X-User-Role": "instructor"}
+        headers = {
+            "X-User-ID": str(user_id),
+            "X-User-Role": "instructor",
+            "X-Profile-ID": str(profile_id),
+        }
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:

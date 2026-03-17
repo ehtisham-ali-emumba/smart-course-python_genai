@@ -42,6 +42,7 @@ class QuizState(TypedDict):
     course_id: _uuid.UUID
     module_id: str
     user_id: _uuid.UUID
+    profile_id: _uuid.UUID
     num_questions: int
     language: str
     passing_score: int
@@ -75,6 +76,7 @@ class SummaryState(TypedDict):
     course_id: _uuid.UUID
     module_id: str
     user_id: _uuid.UUID
+    profile_id: _uuid.UUID
     language: str
     retry_count: int
 
@@ -306,6 +308,7 @@ def _build_persist_quiz_node(course_client: CourseServiceClient):
         course_id = state["course_id"]
         module_id = state["module_id"]
         user_id = state["user_id"]
+        profile_id = state["profile_id"]
         request_data = {
             "passing_score": state.get("passing_score", 70),
             "time_limit_minutes": state.get("time_limit_minutes"),
@@ -329,7 +332,9 @@ def _build_persist_quiz_node(course_client: CourseServiceClient):
 
             # Save via HTTP to course-service
             log.info("[PERSIST_QUIZ] Saving quiz to course-service")
-            result = await course_client.save_quiz(course_id, module_id, payload, user_id)
+            result = await course_client.save_quiz(
+                course_id, module_id, payload, user_id, profile_id
+            )
 
             if result:
                 log.info("[PERSIST_QUIZ] Quiz persisted successfully to course-service")
@@ -507,6 +512,7 @@ def _build_persist_summary_node(course_client: CourseServiceClient):
         course_id = state["course_id"]
         module_id = state["module_id"]
         user_id = state["user_id"]
+        profile_id = state["profile_id"]
 
         log = logger.bind(course_id=course_id, module_id=module_id)
         log.info("[PERSIST_SUMMARY] Starting summary persistence")
@@ -547,7 +553,9 @@ def _build_persist_summary_node(course_client: CourseServiceClient):
 
             # Save via HTTP to course-service
             log.info("[PERSIST_SUMMARY] Saving summary to course-service")
-            result = await course_client.save_summary(course_id, module_id, payload, user_id)
+            result = await course_client.save_summary(
+                course_id, module_id, payload, user_id, profile_id
+            )
 
             if result:
                 log.info("[PERSIST_SUMMARY] Summary persisted successfully to course-service")

@@ -39,8 +39,19 @@ def get_current_user_role(request: Request) -> str:
     return role
 
 
-def require_instructor(request: Request) -> _uuid.UUID:
-    """Require instructor or admin role."""
+def get_current_profile_id(request: Request) -> _uuid.UUID:
+    """Extract profile ID from X-Profile-ID header."""
+    profile_id = request.headers.get("X-Profile-ID")
+    if not profile_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Profile not found",
+        )
+    return _uuid.UUID(profile_id)
+
+
+def require_instructor(request: Request) -> tuple[_uuid.UUID, _uuid.UUID]:
+    """Require instructor or admin role. Returns (user_id, profile_id)."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
     if role not in ("instructor", "admin"):
@@ -48,7 +59,8 @@ def require_instructor(request: Request) -> _uuid.UUID:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Instructor role required",
         )
-    return user_id
+    profile_id = get_current_profile_id(request)
+    return user_id, profile_id
 
 
 def require_student(request: Request) -> _uuid.UUID:
