@@ -41,6 +41,7 @@ class CoursePublishWorkflowInput:
 
     course_id: str
     instructor_id: str
+    user_id: str
     course_title: str
 
 

@@ -8,7 +8,12 @@ logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from temporalio.client import Client as TemporalClient
 
-from api.dependencies import get_event_producer, get_temporal_client, require_instructor
+from api.dependencies import (
+    get_current_user_id,
+    get_event_producer,
+    get_temporal_client,
+    require_instructor,
+)
 from core.database import get_db
 from shared.schemas.events.course import (
     CourseArchivedPayload,
@@ -170,6 +175,7 @@ async def update_course_status(
     course_id: _uuid.UUID,
     data: CourseStatusUpdate,
     instructor_id: _uuid.UUID = Depends(require_instructor),
+    user_id: _uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
     producer: EventProducer = Depends(get_event_producer),
     temporal_client: TemporalClient = Depends(get_temporal_client),
@@ -198,6 +204,7 @@ async def update_course_status(
                 temporal_client,
                 course_id=course_id,
                 instructor_id=instructor_id,
+                user_id=user_id,
                 course_title=course["title"],
             )
 

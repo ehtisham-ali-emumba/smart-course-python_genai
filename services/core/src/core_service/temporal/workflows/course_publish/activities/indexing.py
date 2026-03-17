@@ -21,6 +21,7 @@ AI_SERVICE = core_settings.AI_SERVICE_URL
 class TriggerIndexingInput:
     course_id: str
     instructor_id: str
+    user_id: str
 
 
 @dataclass
@@ -34,6 +35,7 @@ class TriggerIndexingOutput:
 class PollIndexingStatusInput:
     course_id: str
     instructor_id: str
+    user_id: str
 
 
 @dataclass
@@ -62,8 +64,9 @@ async def trigger_course_indexing(
             f"{AI_SERVICE}/api/v1/ai/index/courses/{input.course_id}/build",
             payload={"force_rebuild": True},
             headers={
-                "X-User-ID": str(input.instructor_id),
+                "X-User-ID": str(input.user_id),
                 "X-User-Role": "instructor",
+                "X-Profile-ID": str(input.instructor_id),
             },
         )
 
@@ -91,8 +94,9 @@ async def poll_course_indexing_status(
         result = await get_json(
             f"{AI_SERVICE}/api/v1/ai/index/courses/{input.course_id}/status",
             headers={
-                "X-User-ID": str(input.instructor_id),
+                "X-User-ID": str(input.user_id),
                 "X-User-Role": "instructor",
+                "X-Profile-ID": str(input.instructor_id),
             },
         )
 

@@ -17,6 +17,7 @@ async def start_course_publish_workflow(
     *,
     course_id: _uuid.UUID,
     instructor_id: _uuid.UUID,
+    user_id: _uuid.UUID,
     course_title: str,
 ) -> str:
     """Start the CoursePublishWorkflow on Temporal and return the workflow ID."""
@@ -26,6 +27,7 @@ async def start_course_publish_workflow(
     workflow_input = CoursePublishWorkflowInput(
         course_id=str(course_id),
         instructor_id=str(instructor_id),
+        user_id=str(user_id),
         course_title=course_title,
     )
 

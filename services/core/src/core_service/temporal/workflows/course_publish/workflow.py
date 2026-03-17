@@ -160,6 +160,7 @@ class CoursePublishWorkflow:
             TriggerIndexingInput(
                 course_id=input.course_id,
                 instructor_id=input.instructor_id,
+                user_id=input.user_id,
             ),
             start_to_close_timeout=timedelta(seconds=60),
             retry_policy=DEFAULT_RETRY_POLICY,
@@ -193,6 +194,7 @@ class CoursePublishWorkflow:
                 PollIndexingStatusInput(
                     course_id=input.course_id,
                     instructor_id=input.instructor_id,
+                    user_id=input.user_id,
                 ),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=INDEXING_POLL_RETRY_POLICY,
