@@ -21,6 +21,7 @@ class QuizAttempt(Base):
     score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
     passed: Mapped[bool | None] = mapped_column(default=None)
     time_spent_seconds: Mapped[int | None] = mapped_column(default=None)
+    quiz_version: Mapped[int | None] = mapped_column(default=None)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     submitted_at: Mapped[datetime | None] = mapped_column(default=None)
     graded_at: Mapped[datetime | None] = mapped_column(default=None)

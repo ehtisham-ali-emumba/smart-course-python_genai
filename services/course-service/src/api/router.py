@@ -5,8 +5,9 @@ from api import (
     course_content,
     courses,
     enrollments,
-    progress,
     module_quiz,
+    progress,
+    quiz_attempt,
     module_summary,
 )
 
@@ -19,4 +20,5 @@ router.include_router(certificates.router, prefix="/course/certificates", tags=[
 router.include_router(course_content.router, prefix="/courses", tags=["Course Content"])
 router.include_router(progress.router, prefix="/course/progress", tags=["Progress"])
 router.include_router(module_quiz.router, prefix="/courses", tags=["Module Quiz"])
+router.include_router(quiz_attempt.router, prefix="/courses", tags=["Quiz Attempts"])
 router.include_router(module_summary.router, prefix="/courses", tags=["Module Summary"])
