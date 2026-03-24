@@ -10,6 +10,7 @@ from ai_service.services.text_chunker import TextChunker
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
 from ai_service.services.generation_status import GenerationStatusTracker
+from ai_service.services.index_graph import build_index_graph, IndexState
 from ai_service.schemas.index import (
     BuildIndexRequest,
     IndexBuildResponse,
@@ -19,9 +20,6 @@ from ai_service.schemas.common import IndexStatus
 from ai_service.config import settings
 
 logger = structlog.get_logger(__name__)
-
-# Max texts per OpenAI embedding batch
-EMBEDDING_BATCH_SIZE = 100
 
 
 class IndexService:
@@ -41,6 +39,66 @@ class IndexService:
         self.vector_store = vector_store
         self.status_tracker = status_tracker
 
+        # Compile the graph once — reused for every invocation
+        self._index_graph = build_index_graph(
+            text_chunker=text_chunker,
+            openai_client=openai_client,
+            vector_store=vector_store,
+        )
+
+    async def _invoke_module_index_graph(
+        self,
+        course_id: _uuid.UUID,
+        module_id: str,
+        module_title: str,
+        lesson_texts: dict[str, str],
+        lessons: list[dict],
+        force_rebuild: bool,
+    ) -> tuple[int, str | None]:
+        """Invoke the LangGraph indexing pipeline for a single module.
+
+        Args:
+            course_id: Course ID.
+            module_id: Module ID.
+            module_title: Module title.
+            lesson_texts: Dict of lesson_id → text content.
+            lessons: List of lesson metadata dicts.
+            force_rebuild: Whether this is a force rebuild.
+
+        Returns:
+            Tuple of (chunks_stored, error_message).
+            If successful, error_message is None.
+            If failed, chunks_stored is 0 and error_message contains the error.
+        """
+        log = logger.bind(course_id=course_id, module_id=module_id)
+
+        try:
+            result = await self._index_graph.ainvoke(
+                IndexState(
+                    course_id=course_id,
+                    module_id=module_id,
+                    module_title=module_title,
+                    lesson_texts=lesson_texts,
+                    lessons=lessons,
+                    force_rebuild=force_rebuild,
+                )
+            )
+
+            # Check for graph-level errors
+            if result.get("error"):
+                error_msg = result["error"]
+                log.error("Module indexing failed in graph", error=error_msg)
+                return 0, error_msg
+
+            chunks_stored = result.get("total_chunks_stored", 0)
+            log.info("Module indexing succeeded", chunks_stored=chunks_stored)
+            return chunks_stored, None
+
+        except Exception as e:
+            error_msg = f"Module indexing error: {str(e)}"
+            log.exception("Module indexing exception", error=str(e))
+            return 0, error_msg
+
     async def build_course_index(
         self, course_id: _uuid.UUID, request: BuildIndexRequest
     ) -> IndexBuildResponse:
@@ -58,16 +116,12 @@ class IndexService:
             requested_at=datetime.now(timezone.utc),
         )
 
-    async def build_module_index(
-        self, course_id: _uuid.UUID, module_id: str, request: BuildIndexRequest
-    ) -> IndexBuildResponse:
+    async def build_module_index(self, course_id: _uuid.UUID, module_id: str) -> IndexBuildResponse:
         """Trigger index build for a single module (background task)."""
         log = logger.bind(course_id=course_id, module_id=module_id)
-        log.info("Module index build requested", force_rebuild=request.force_rebuild)
+        log.info("Module index build requested")
 
-        asyncio.create_task(
-            self._build_module_index_task(course_id, module_id, request.force_rebuild)
-        )
+        asyncio.create_task(self._build_module_index_task(course_id, module_id))
 
         return IndexBuildResponse(
             course_id=course_id,
@@ -78,15 +132,10 @@ class IndexService:
         )
 
     async def _build_course_index_task(self, course_id: _uuid.UUID, force_rebuild: bool) -> None:
-        """Background task: index all modules in a course."""
+        """Background task: index all modules in a course using LangGraph."""
         log = logger.bind(course_id=course_id)
         try:
             await self.status_tracker.set_in_progress(course_id, "course", "index")
-
-            # If force rebuild, delete existing vectors first
-            if force_rebuild:
-                log.info("Force rebuild: deleting existing course vectors")
-                await self.vector_store.delete_course_vectors(course_id)
 
             # Extract all course content
             course_content = await self.content_extractor.extract_course_content(course_id)
@@ -98,22 +147,22 @@ class IndexService:
 
             total_chunks = 0
 
+            # Run the LangGraph pipeline for each module
+            # Each module's cleanup node respects the force_rebuild flag
             for module_data in course_content["modules"]:
-                module_id = module_data["module_id"]
-                module_title = module_data["module_title"]
-
-                # If force rebuild, module vectors already deleted above
-                if not force_rebuild:
-                    # Delete only this module's vectors before re-indexing
-                    await self.vector_store.delete_module_vectors(course_id, module_id)
-
-                chunks_stored = await self._index_module_lessons(
+                chunks_stored, error = await self._invoke_module_index_graph(
                     course_id=course_id,
-                    module_id=module_id,
-                    module_title=module_title,
+                    module_id=module_data["module_id"],
+                    module_title=module_data["module_title"],
                     lesson_texts=module_data["lesson_texts"],
                     lessons=module_data["lessons"],
+                    force_rebuild=force_rebuild,
                 )
+
+                if error:
+                    # Continue with other modules — don't fail the whole course
+                    continue
+
                 total_chunks += chunks_stored
 
             await self.status_tracker.set_completed(course_id, "course", "index")
@@ -127,16 +176,11 @@ class IndexService:
             log.exception("Course index build failed", error=str(e))
             await self.status_tracker.set_failed(course_id, "course", "index", str(e))
 
-    async def _build_module_index_task(
-        self, course_id: _uuid.UUID, module_id: str, force_rebuild: bool
-    ) -> None:
-        """Background task: index a single module."""
+    async def _build_module_index_task(self, course_id: _uuid.UUID, module_id: str) -> None:
+        """Background task: index a single module using LangGraph."""
         log = logger.bind(course_id=course_id, module_id=module_id)
         try:
             await self.status_tracker.set_in_progress(course_id, module_id, "index")
-
-            # Delete existing module vectors
-            await self.vector_store.delete_module_vectors(course_id, module_id)
 
             # Extract module content
             module_content = await self.content_extractor.extract_module_content(
@@ -148,13 +192,20 @@ class IndexService:
                 )
                 return
 
-            chunks_stored = await self._index_module_lessons(
+            # Run the LangGraph pipeline via centralized helper
+            # Module endpoint always deletes existing vectors (force_rebuild=True)
+            chunks_stored, error = await self._invoke_module_index_graph(
                 course_id=course_id,
                 module_id=module_id,
                 module_title=module_content["module_title"],
                 lesson_texts=module_content["lesson_texts"],
                 lessons=module_content["lessons"],
+                force_rebuild=True,
             )
+
+            if error:
+                await self.status_tracker.set_failed(course_id, module_id, "index", error)
+                return
 
             await self.status_tracker.set_completed(course_id, module_id, "index")
             log.info("Module index build completed", chunks_stored=chunks_stored)
@@ -162,76 +213,6 @@ class IndexService:
         except Exception as e:
             log.exception("Module index build failed", error=str(e))
             await self.status_tracker.set_failed(course_id, module_id, "index", str(e))
-
-    async def _index_module_lessons(
-        self,
-        course_id: _uuid.UUID,
-        module_id: str,
-        module_title: str,
-        lesson_texts: dict[str, str],
-        lessons: list[dict],
-    ) -> int:
-        """Chunk, embed, and store vectors for all lessons in a module.
-
-        Returns total chunks stored.
-        """
-        # Build lesson_id → title mapping
-        lesson_title_map = {lesson["lesson_id"]: lesson.get("title", "") for lesson in lessons}
-
-        total_stored = 0
-
-        for lesson_id, text in lesson_texts.items():
-            lesson_title = lesson_title_map.get(lesson_id, "")
-
-            # 1. Chunk the text
-            chunks = self.text_chunker.chunk_text(text)
-            if not chunks:
-                continue
-
-            # 2. Embed all chunks (batch for efficiency)
-            chunk_texts = [c.text for c in chunks]
-            embeddings = await self._embed_in_batches(chunk_texts)
-
-            # 3. Build chunk records for Qdrant
-            chunk_records = [
-                {
-                    "text": chunk.text,
-                    "embedding": embedding,
-                    "chunk_index": chunk.chunk_index,
-                    "lesson_title": lesson_title,
-                    "module_title": module_title,
-                }
-                for chunk, embedding in zip(chunks, embeddings)
-            ]
-
-            # 4. Store in Qdrant
-            stored = await self.vector_store.upsert_chunks(
-                course_id=course_id,
-                module_id=module_id,
-                lesson_id=lesson_id,
-                chunks=chunk_records,
-            )
-            total_stored += stored
-
-        return total_stored
-
-    async def _embed_in_batches(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts in batches to avoid API limits.
-
-        Args:
-            texts: List of text strings.
-
-        Returns:
-            List of embedding vectors matching input order.
-        """
-        all_embeddings: list[list[float]] = []
-
-        for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-            batch = texts[i : i + EMBEDDING_BATCH_SIZE]
-            batch_embeddings = await self.openai_client.embed_texts(batch)
-            all_embeddings.extend(batch_embeddings)
-
-        return all_embeddings
 
     async def get_course_status(self, course_id: _uuid.UUID) -> IndexStatusResponse:
         """Get index status for a course."""

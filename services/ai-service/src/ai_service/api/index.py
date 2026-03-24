@@ -50,7 +50,6 @@ async def build_course_index(
 async def build_module_index(
     module_id: str,
     course_id: _uuid.UUID,
-    request: BuildIndexRequest | None = None,
     _instructor: tuple[_uuid.UUID, _uuid.UUID] = Depends(require_instructor),
     index_service: IndexService = Depends(get_index_service),
 ) -> IndexBuildResponse:
@@ -59,16 +58,13 @@ async def build_module_index(
     Args:
         module_id: Module ID from path parameter (bson ObjectId hex)
         course_id: Course ID (query parameter, required)
-        request: Optional index build request with force_rebuild flag
         _instructor: Authenticated instructor context (user_id, profile_id)
         index_service: IndexService from dependency injection
 
     Returns:
         IndexBuildResponse with build status
     """
-    if request is None:
-        request = BuildIndexRequest(force_rebuild=False)
-    return await index_service.build_module_index(course_id, module_id, request)
+    return await index_service.build_module_index(course_id, module_id)
 
 
 @router.get(
