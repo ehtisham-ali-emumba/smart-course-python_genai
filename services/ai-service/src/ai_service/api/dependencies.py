@@ -5,17 +5,8 @@ import uuid as _uuid
 from fastapi import HTTPException, Request, status
 
 from ai_service.services.index import IndexService
-from ai_service.services.content_extractor import ContentExtractor
-from ai_service.services.text_chunker import TextChunker
 from ai_service.services.tutor import TutorService
 from ai_service.services.instructor import InstructorService
-from ai_service.clients.openai_client import OpenAIClient
-from ai_service.repositories.course_content import CourseContentRepository
-from ai_service.repositories.vector_store import VectorStoreRepository
-from ai_service.clients.resource_extractor import ResourceTextExtractor
-from ai_service.services.generation_status import GenerationStatusTracker
-from ai_service.core.mongodb import get_mongodb, connect_mongodb, close_mongodb
-from ai_service.core.redis import get_redis
 
 
 def get_current_user_id(request: Request) -> _uuid.UUID:
@@ -83,36 +74,21 @@ def get_authenticated_user(request: Request) -> tuple[_uuid.UUID, str]:
     return user_id, role
 
 
-# Module-level reference for vector store singleton
-_vector_store: VectorStoreRepository | None = None
+# Module-level reference for index service singleton
+_index_service: IndexService | None = None
 
 
-def set_vector_store(vs: VectorStoreRepository) -> None:
-    """Called during app startup to set the vector store singleton."""
-    global _vector_store
-    _vector_store = vs
+def set_index_service(svc: IndexService) -> None:
+    """Called during app startup to set the index service singleton."""
+    global _index_service
+    _index_service = svc
 
 
 def get_index_service() -> IndexService:
-    """FastAPI dependency that builds IndexService with all its dependencies."""
-    db = get_mongodb()
-    if db is None:
-        raise RuntimeError("MongoDB connection not initialized")
-    repo = CourseContentRepository(db)
-    resource_extractor = ResourceTextExtractor()
-    content_extractor = ContentExtractor(repo, resource_extractor)
-    text_chunker = TextChunker()
-    openai_client = OpenAIClient()
-    redis_client = get_redis()
-    status_tracker = GenerationStatusTracker(redis_client)
-
-    return IndexService(
-        content_extractor=content_extractor,
-        text_chunker=text_chunker,
-        openai_client=openai_client,
-        vector_store=_vector_store,
-        status_tracker=status_tracker,
-    )
+    """FastAPI dependency that returns the IndexService singleton."""
+    if _index_service is None:
+        raise RuntimeError("IndexService not initialized. Check app startup.")
+    return _index_service
 
 
 # Module-level reference for tutor service singleton

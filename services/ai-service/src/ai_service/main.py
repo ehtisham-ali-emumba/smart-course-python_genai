@@ -11,14 +11,28 @@ from ai_service.core.mongodb import connect_mongodb, close_mongodb
 from ai_service.core.redis import connect_redis, close_redis, get_redis
 from ai_service.repositories.vector_store import VectorStoreRepository
 from ai_service.clients.openai_client import OpenAIClient
-from ai_service.core.service_factory import create_tutor_service, create_instructor_service
-from ai_service.api.dependencies import set_vector_store, set_tutor_service, set_instructor_service
+from ai_service.core.service_factory import create_index_service, create_tutor_service, create_instructor_service
+from ai_service.api.dependencies import set_index_service, set_tutor_service, set_instructor_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Module-level reference for cleanup
 _vector_store: VectorStoreRepository | None = None
+
+
+def _initialize_services(vector_store: VectorStoreRepository) -> None:
+    """Create and register all service singletons (graphs compiled once at startup)."""
+    openai_client = OpenAIClient()
+
+    index_service = create_index_service(openai_client, vector_store)
+    set_index_service(index_service)
+
+    tutor_service = create_tutor_service(openai_client, vector_store)
+    set_tutor_service(tutor_service)
+
+    instructor_service = create_instructor_service(openai_client)
+    set_instructor_service(instructor_service)
 
 
 @asynccontextmanager
@@ -32,18 +46,10 @@ async def lifespan(app: FastAPI):
     # Initialize Qdrant vector store
     _vector_store = VectorStoreRepository()
     await _vector_store.connect()
-    set_vector_store(_vector_store)
 
-    # Initialize service singletons (graphs compiled once at startup)
-    openai_client = OpenAIClient()
+    _initialize_services(_vector_store)
 
-    tutor_service = create_tutor_service(openai_client, _vector_store)
-    set_tutor_service(tutor_service)
-
-    instructor_service = create_instructor_service(openai_client)
-    set_instructor_service(instructor_service)
-
-    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant + Tutor + Instructor)")
+    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant + Index + Tutor + Instructor)")
 
     yield
 
