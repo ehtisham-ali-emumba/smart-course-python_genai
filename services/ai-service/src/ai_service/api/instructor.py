@@ -4,14 +4,7 @@ import uuid as _uuid
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ai_service.api.dependencies import require_instructor
-from ai_service.core.mongodb import get_mongodb
-from ai_service.core.redis import get_redis
-from ai_service.repositories.course_content import CourseContentRepository
-from ai_service.clients.openai_client import OpenAIClient
-from ai_service.clients.course_service_client import CourseServiceClient
-from ai_service.clients.resource_extractor import ResourceTextExtractor
-from ai_service.services.content_extractor import ContentExtractor
+from ai_service.api.dependencies import require_instructor, get_instructor_service
 from ai_service.schemas.instructor import (
     GenerateSummaryRequest,
     GenerateSummaryResponse,
@@ -20,31 +13,10 @@ from ai_service.schemas.instructor import (
     GenerationStatusResponse,
 )
 from ai_service.services.instructor import InstructorService
-from ai_service.services.generation_status import GenerationStatusTracker
 
 router = APIRouter()
 
 logger = structlog.get_logger(__name__)
-
-
-def get_instructor_service() -> InstructorService:
-    """Dependency injection function to build InstructorService with all dependencies."""
-    db = get_mongodb()
-    if db is None:
-        raise RuntimeError("MongoDB connection not initialized")
-
-    redis = get_redis()
-    if redis is None:
-        raise RuntimeError("Redis connection not initialized")
-
-    repo = CourseContentRepository(db)
-    openai_client = OpenAIClient()
-    course_client = CourseServiceClient()
-    resource_extractor = ResourceTextExtractor()
-    content_extractor = ContentExtractor(repo, resource_extractor)
-    status_tracker = GenerationStatusTracker(redis)
-
-    return InstructorService(repo, openai_client, course_client, content_extractor, status_tracker)
 
 
 @router.post(

@@ -37,6 +37,12 @@ class TutorService:
         # Structure: {session_id: {course_id, module_id, lesson_id, student_id, history}}
         self._sessions: dict[str, dict] = {}
 
+        # Build graph once at init — compiled graph is stateless and reusable
+        self._tutor_graph = build_tutor_graph(
+            openai_client=openai_client,
+            vector_store=vector_store,
+        )
+
     async def create_session(
         self, student_id: _uuid.UUID, request: CreateSessionRequest
     ) -> SessionResponse:
@@ -163,11 +169,8 @@ class TutorService:
         """
         session = self._sessions[session_id]
 
-        # Build the LangGraph agent (cheap — just wires closures)
-        graph = build_tutor_graph(
-            openai_client=self.openai_client,
-            vector_store=self.vector_store,
-        )
+        # Use pre-built tutor graph
+        graph = self._tutor_graph
 
         # Prepare initial state
         initial_state: TutorState = {

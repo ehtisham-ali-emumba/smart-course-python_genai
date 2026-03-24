@@ -52,6 +52,10 @@ class InstructorService:
         self.content_extractor = content_extractor
         self.status_tracker = status_tracker
 
+        # Build graphs once at init — compiled graphs are stateless and reusable
+        self._summary_graph = build_summary_graph(openai_client, course_client, content_extractor)
+        self._quiz_graph = build_quiz_graph(openai_client, course_client, content_extractor)
+
     async def _validate_course_ownership_and_module(
         self,
         course_id: _uuid.UUID,
@@ -167,12 +171,8 @@ class InstructorService:
             # Mark IN_PROGRESS before starting the graph
             await self.status_tracker.set_in_progress(course_id, module_id, "summary")
 
-            # Build and invoke the graph
-            graph = build_summary_graph(
-                self.openai_client,
-                self.course_client,
-                self.content_extractor,
-            )
+            # Use pre-built summary graph
+            graph = self._summary_graph
 
             result = await graph.ainvoke(
                 {
@@ -281,12 +281,8 @@ class InstructorService:
             # Mark IN_PROGRESS before starting the graph
             await self.status_tracker.set_in_progress(course_id, module_id, "quiz")
 
-            # Build and invoke the graph
-            graph = build_quiz_graph(
-                self.openai_client,
-                self.course_client,
-                self.content_extractor,
-            )
+            # Use pre-built quiz graph
+            graph = self._quiz_graph
 
             result = await graph.ainvoke(
                 {

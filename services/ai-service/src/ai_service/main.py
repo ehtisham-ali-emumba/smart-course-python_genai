@@ -10,9 +10,9 @@ from ai_service.config import settings
 from ai_service.core.mongodb import connect_mongodb, close_mongodb
 from ai_service.core.redis import connect_redis, close_redis, get_redis
 from ai_service.repositories.vector_store import VectorStoreRepository
-from ai_service.services.tutor import TutorService
 from ai_service.clients.openai_client import OpenAIClient
-from ai_service.api.dependencies import set_vector_store, set_tutor_service
+from ai_service.core.service_factory import create_tutor_service, create_instructor_service
+from ai_service.api.dependencies import set_vector_store, set_tutor_service, set_instructor_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,15 +34,16 @@ async def lifespan(app: FastAPI):
     await _vector_store.connect()
     set_vector_store(_vector_store)
 
-    # Initialize Tutor Service (singleton — holds session state)
+    # Initialize service singletons (graphs compiled once at startup)
     openai_client = OpenAIClient()
-    tutor_service = TutorService(
-        openai_client=openai_client,
-        vector_store=_vector_store,
-    )
+
+    tutor_service = create_tutor_service(openai_client, _vector_store)
     set_tutor_service(tutor_service)
 
-    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant + Tutor)")
+    instructor_service = create_instructor_service(openai_client)
+    set_instructor_service(instructor_service)
+
+    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant + Tutor + Instructor)")
 
     yield
 

@@ -8,6 +8,7 @@ from ai_service.services.index import IndexService
 from ai_service.services.content_extractor import ContentExtractor
 from ai_service.services.text_chunker import TextChunker
 from ai_service.services.tutor import TutorService
+from ai_service.services.instructor import InstructorService
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.repositories.vector_store import VectorStoreRepository
@@ -129,3 +130,20 @@ def get_tutor_service() -> TutorService:
     if _tutor_service is None:
         raise RuntimeError("TutorService not initialized. Check app startup.")
     return _tutor_service
+
+
+# Module-level reference for instructor service singleton
+_instructor_service: InstructorService | None = None
+
+
+def set_instructor_service(svc: InstructorService) -> None:
+    """Called during app startup to set the instructor service singleton."""
+    global _instructor_service
+    _instructor_service = svc
+
+
+def get_instructor_service() -> InstructorService:
+    """FastAPI dependency that returns the InstructorService singleton."""
+    if _instructor_service is None:
+        raise RuntimeError("InstructorService not initialized. Check app startup.")
+    return _instructor_service
