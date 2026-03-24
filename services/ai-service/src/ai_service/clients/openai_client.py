@@ -317,6 +317,60 @@ class OpenAIClient:
         result = await self.embed_texts([query])
         return result[0]
 
+    async def describe_image(self, base64_image: str) -> str:
+        """Describe an image using GPT-4o vision.
+
+        Used by the PDF processor to understand images extracted from course PDFs.
+
+        Args:
+            base64_image: Base64-encoded image string (PNG format).
+
+        Returns:
+            Text description of the image.
+
+        Raises:
+            openai.OpenAIError: On API errors.
+        """
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Describe this image from a course PDF. "
+                                    "If it is a chart, graph, or diagram, describe: "
+                                    "the type of visualization, axes/labels, data trends, "
+                                    "and key takeaways. If it is a photo or illustration, "
+                                    "describe what it shows and its educational relevance. "
+                                    "Be concise but thorough."
+                                ),
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{base64_image}",
+                                    "detail": "high",
+                                },
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=300,
+            )
+
+            result = response.choices[0].message.content
+            if result is None:
+                raise ValueError("OpenAI returned empty response for image description")
+            return result.strip()
+
+        except Exception as e:
+            logger.error("Failed to describe image", error=str(e))
+            raise
+
     async def chat_completion(
         self,
         messages: list[dict],

@@ -4,9 +4,10 @@ import asyncio
 import uuid as _uuid
 import structlog
 from datetime import datetime, timezone
+from fastapi import HTTPException
 
-from ai_service.services.content_extractor import ContentExtractor
-from ai_service.services.text_chunker import TextChunker
+from ai_service.services.content_pipeline.content_extractor import ContentExtractor
+from ai_service.services.content_pipeline.text_chunker import TextChunker
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
 from ai_service.services.generation_status import GenerationStatusTracker
@@ -34,13 +35,12 @@ class IndexService:
         status_tracker: GenerationStatusTracker,
     ):
         self.content_extractor = content_extractor
-        self.text_chunker = text_chunker
-        self.openai_client = openai_client
         self.vector_store = vector_store
         self.status_tracker = status_tracker
 
         # Compile the graph once — reused for every invocation
         self._index_graph = build_index_graph(
+            content_extractor=content_extractor,
             text_chunker=text_chunker,
             openai_client=openai_client,
             vector_store=vector_store,
@@ -50,25 +50,14 @@ class IndexService:
         self,
         course_id: _uuid.UUID,
         module_id: str,
-        module_title: str,
-        lesson_texts: dict[str, str],
-        lessons: list[dict],
         force_rebuild: bool,
     ) -> tuple[int, str | None]:
         """Invoke the LangGraph indexing pipeline for a single module.
 
-        Args:
-            course_id: Course ID.
-            module_id: Module ID.
-            module_title: Module title.
-            lesson_texts: Dict of lesson_id → text content.
-            lessons: List of lesson metadata dicts.
-            force_rebuild: Whether this is a force rebuild.
+        Content extraction happens inside the graph now.
 
         Returns:
             Tuple of (chunks_stored, error_message).
-            If successful, error_message is None.
-            If failed, chunks_stored is 0 and error_message contains the error.
         """
         log = logger.bind(course_id=course_id, module_id=module_id)
 
@@ -77,14 +66,10 @@ class IndexService:
                 IndexState(
                     course_id=course_id,
                     module_id=module_id,
-                    module_title=module_title,
-                    lesson_texts=lesson_texts,
-                    lessons=lessons,
                     force_rebuild=force_rebuild,
                 )
             )
 
-            # Check for graph-level errors
             if result.get("error"):
                 error_msg = result["error"]
                 log.error("Module indexing failed in graph", error=error_msg)
@@ -106,6 +91,14 @@ class IndexService:
         log = logger.bind(course_id=course_id)
         log.info("Course index build requested", force_rebuild=request.force_rebuild)
 
+        if await self.status_tracker.is_running(course_id, "course", "index"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Course indexing is already in progress. " "Check status endpoint for updates."
+                ),
+            )
+
         # Fire background task
         asyncio.create_task(self._build_course_index_task(course_id, request.force_rebuild))
 
@@ -120,6 +113,14 @@ class IndexService:
         """Trigger index build for a single module (background task)."""
         log = logger.bind(course_id=course_id, module_id=module_id)
         log.info("Module index build requested")
+
+        if await self.status_tracker.is_running(course_id, module_id, "index"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Module indexing is already in progress. " "Check status endpoint for updates."
+                ),
+            )
 
         asyncio.create_task(self._build_module_index_task(course_id, module_id))
 
@@ -137,39 +138,29 @@ class IndexService:
         try:
             await self.status_tracker.set_in_progress(course_id, "course", "index")
 
-            # Extract all course content
-            course_content = await self.content_extractor.extract_course_content(course_id)
-            if not course_content:
+            # Fetch course structure (just module IDs — content extraction is inside the graph)
+            course_data = await self.content_extractor.fetch_course_data(course_id)
+            if not course_data:
                 await self.status_tracker.set_failed(
-                    course_id, "course", "index", "Course not found in MongoDB"
+                    course_id, "course", "index", "Course not found"
                 )
                 return
 
             total_chunks = 0
-
-            # Run the LangGraph pipeline for each module
-            # Each module's cleanup node respects the force_rebuild flag
-            for module_data in course_content["modules"]:
+            for module_data in course_data["modules"]:
                 chunks_stored, error = await self._invoke_module_index_graph(
                     course_id=course_id,
                     module_id=module_data["module_id"],
-                    module_title=module_data["module_title"],
-                    lesson_texts=module_data["lesson_texts"],
-                    lessons=module_data["lessons"],
                     force_rebuild=force_rebuild,
                 )
-
-                if error:
-                    # Continue with other modules — don't fail the whole course
-                    continue
-
-                total_chunks += chunks_stored
+                if not error:
+                    total_chunks += chunks_stored
 
             await self.status_tracker.set_completed(course_id, "course", "index")
             log.info(
                 "Course index build completed",
                 total_chunks=total_chunks,
-                total_modules=len(course_content["modules"]),
+                total_modules=len(course_data["modules"]),
             )
 
         except Exception as e:
@@ -182,33 +173,17 @@ class IndexService:
         try:
             await self.status_tracker.set_in_progress(course_id, module_id, "index")
 
-            # Extract module content
-            module_content = await self.content_extractor.extract_module_content(
-                course_id, module_id
-            )
-            if not module_content:
-                await self.status_tracker.set_failed(
-                    course_id, module_id, "index", "Module not found in MongoDB"
-                )
-                return
-
-            # Run the LangGraph pipeline via centralized helper
-            # Module endpoint always deletes existing vectors (force_rebuild=True)
             chunks_stored, error = await self._invoke_module_index_graph(
                 course_id=course_id,
                 module_id=module_id,
-                module_title=module_content["module_title"],
-                lesson_texts=module_content["lesson_texts"],
-                lessons=module_content["lessons"],
                 force_rebuild=True,
             )
 
             if error:
                 await self.status_tracker.set_failed(course_id, module_id, "index", error)
-                return
-
-            await self.status_tracker.set_completed(course_id, module_id, "index")
-            log.info("Module index build completed", chunks_stored=chunks_stored)
+            else:
+                await self.status_tracker.set_completed(course_id, module_id, "index")
+                log.info("Module index build completed", chunks_stored=chunks_stored)
 
         except Exception as e:
             log.exception("Module index build failed", error=str(e))

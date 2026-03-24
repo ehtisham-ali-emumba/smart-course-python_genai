@@ -131,3 +131,10 @@ class GenerationStatusTracker:
             status=status_data.get("status"),
         )
         return status_data
+
+    async def is_running(self, course_id: _uuid.UUID, module_id: str, content_type: str) -> bool:
+        """Return True when a task is currently in progress for this resource."""
+        status_data = await self.get_status(course_id, module_id, content_type)
+        if status_data is None:
+            return False
+        return status_data.get("status") == GenerationStatus.IN_PROGRESS.value

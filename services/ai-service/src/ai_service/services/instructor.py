@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 from ai_service.repositories.course_content import CourseContentRepository
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
-from ai_service.services.content_extractor import ContentExtractor
+from ai_service.services.content_pipeline import ContentExtractor
 from ai_service.services.instructor_graphs import build_quiz_graph, build_summary_graph
 from ai_service.schemas.instructor import (
     GenerateSummaryRequest,
@@ -139,6 +139,15 @@ class InstructorService:
         # Guard: validate before firing the background task
         await self._validate_course_ownership_and_module(course_id, module_id, user_id, profile_id)
 
+        if await self.status_tracker.is_running(course_id, module_id, "summary"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Summary generation is already in progress. "
+                    "Check generation-status endpoint for updates."
+                ),
+            )
+
         log.info(
             "Validation passed — dispatching summary generation task",
             source_lesson_ids=request.source_lesson_ids,
@@ -246,6 +255,15 @@ class InstructorService:
 
         # Guard: validate before firing the background task
         await self._validate_course_ownership_and_module(course_id, module_id, user_id, profile_id)
+
+        if await self.status_tracker.is_running(course_id, module_id, "quiz"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Quiz generation is already in progress. "
+                    "Check generation-status endpoint for updates."
+                ),
+            )
 
         log.info(
             "Validation passed — dispatching quiz generation task",

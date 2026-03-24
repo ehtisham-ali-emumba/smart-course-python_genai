@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 
-from ai_service.services.text_chunker import TextChunker
+from ai_service.services.content_pipeline.text_chunker import TextChunker
+from ai_service.services.content_pipeline.content_extractor import ContentExtractor
+from ai_service.services.content_pipeline.pdf_processor import build_pdf_extraction_node
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
 
@@ -32,21 +34,22 @@ EMBEDDING_BATCH_SIZE = 100
 class IndexState(BaseModel):
     """State flowing through the indexing pipeline."""
 
-    # ── Required Input (set before graph invocation) ──
+    # ── Required Input ──
     course_id: _uuid.UUID
     module_id: str
-    module_title: str
-    lesson_texts: dict[str, str]  # lesson_id → full text
-    lessons: list[dict]  # lesson metadata (for title mapping)
     force_rebuild: bool
+    source_lesson_ids: list[str] | None = None
+
+    # ── Set by extraction nodes (no longer required as input) ──
+    lessons: list[dict] = Field(default_factory=list)
+    module_title: str = ""
+    pdf_texts: dict[str, str] = Field(default_factory=dict)
+    combined_text: str = ""
+    lesson_texts: dict[str, str] = Field(default_factory=dict)
 
     # ── Intermediate (set by nodes) ──
-    lesson_chunks: dict[str, list[dict]] = Field(
-        default_factory=dict
-    )  # lesson_id → [{text, chunk_index, ...}]
-    lesson_embeddings: dict[str, list[list[float]]] = Field(
-        default_factory=dict
-    )  # lesson_id → [embedding vectors]
+    lesson_chunks: dict[str, list[dict]] = Field(default_factory=dict)
+    lesson_embeddings: dict[str, list[list[float]]] = Field(default_factory=dict)
     total_chunks_stored: int = 0
 
     # ── Output / Error ──
@@ -57,6 +60,47 @@ class IndexState(BaseModel):
         """Pydantic config."""
 
         arbitrary_types_allowed = True
+
+
+# ── Node: Fetch Lessons ────────────────────────────────────────────
+
+
+def _build_fetch_lessons_node(content_extractor: ContentExtractor):
+    """Fetch lesson metadata from MongoDB before PDF extraction."""
+
+    async def fetch_lessons(state: IndexState) -> dict:
+        log = logger.bind(course_id=state.course_id, module_id=state.module_id)
+        log.info("[FETCH_LESSONS] Loading from MongoDB")
+        try:
+            module_data = await content_extractor.fetch_module_data(
+                state.course_id, state.module_id, state.source_lesson_ids
+            )
+            if not module_data:
+                return {"error": "Module not found"}
+            return {
+                "lessons": module_data["lessons"],
+                "module_title": module_data["module_title"],
+            }
+        except Exception as e:
+            log.exception("[FETCH_LESSONS] Error", error=str(e))
+            return {"error": str(e)}
+
+    return fetch_lessons
+
+
+# ── Node: Merge Content ────────────────────────────────────────────
+
+
+def _build_merge_content_node(content_extractor: ContentExtractor):
+    """Merge MongoDB text + PDF text into lesson_texts for chunking."""
+
+    async def merge_content(state: IndexState) -> dict:
+        lesson_texts = ContentExtractor.build_lesson_texts(state.lessons, state.pdf_texts)
+        if not lesson_texts:
+            return {"error": "No content to index after merging"}
+        return {"lesson_texts": lesson_texts}
+
+    return merge_content
 
 
 # ── Node: Cleanup Vectors ──────────────────────────────────────────
@@ -258,43 +302,49 @@ def _error_router(next_node: str):
 
 
 def build_index_graph(
+    content_extractor: ContentExtractor,
     text_chunker: TextChunker,
     openai_client: OpenAIClient,
     vector_store: VectorStoreRepository,
 ) -> CompiledStateGraph:
     """Build and compile the LangGraph indexing pipeline.
 
-    Flow:
-      START → cleanup_vectors → chunk_texts → embed_chunks → store_vectors → END
-                  ↓ error          ↓ error       ↓ error        ↓ error
-                 END               END           END            END
+    New flow:
+      START -> cleanup_vectors -> fetch_lessons -> extract_pdfs
+            -> merge_content -> chunk_texts -> embed_chunks -> store_vectors -> END
 
     Args:
+        content_extractor: Fetches module/lesson data from MongoDB.
         text_chunker: Text splitter for chunking lesson content.
-        openai_client: OpenAI client for batch embeddings.
+        openai_client: OpenAI client for batch embeddings and PDF vision.
         vector_store: Qdrant repository for vector storage.
 
     Returns:
         Compiled LangGraph StateGraph ready for invocation.
     """
-    # Create node functions with injected dependencies
     cleanup_node = _build_cleanup_node(vector_store)
+    fetch_node = _build_fetch_lessons_node(content_extractor)
+    extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    merge_node = _build_merge_content_node(content_extractor)
     chunk_node = _build_chunk_node(text_chunker)
     embed_node = _build_embed_node(openai_client)
     store_node = _build_store_node(vector_store)
 
-    # Build the graph
     graph = StateGraph(IndexState)
 
-    # Add nodes
     graph.add_node("cleanup_vectors", cleanup_node)
+    graph.add_node("fetch_lessons", fetch_node)
+    graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("merge_content", merge_node)
     graph.add_node("chunk_texts", chunk_node)
     graph.add_node("embed_chunks", embed_node)
     graph.add_node("store_vectors", store_node)
 
-    # Define edges with error routing at each step
     graph.add_edge(START, "cleanup_vectors")
-    graph.add_conditional_edges("cleanup_vectors", _error_router("chunk_texts"))
+    graph.add_conditional_edges("cleanup_vectors", _error_router("fetch_lessons"))
+    graph.add_conditional_edges("fetch_lessons", _error_router("extract_pdfs"))
+    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_conditional_edges("merge_content", _error_router("chunk_texts"))
     graph.add_conditional_edges("chunk_texts", _error_router("embed_chunks"))
     graph.add_conditional_edges("embed_chunks", _error_router("store_vectors"))
     graph.add_edge("store_vectors", END)

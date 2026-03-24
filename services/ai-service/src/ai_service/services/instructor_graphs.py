@@ -1,8 +1,8 @@
 """LangGraph implementation for quiz and summary generation with validation & retry.
 
 Implements two state machines:
-  - Quiz: extract_content → generate_quiz → validate_quiz ⇄ persist_quiz → END
-  - Summary: extract_content → generate_summary → validate_summary ⇄ persist_summary → END
+    - Quiz: fetch_lessons → extract_pdfs → merge_content → generate_quiz → validate_quiz ⇄ persist_quiz → END
+    - Summary: fetch_lessons → extract_pdfs → merge_content → generate_summary → validate_summary ⇄ persist_summary → END
 
 Uses stateful retry with validation feedback fed back to the LLM.
 Follows the same closure/factory pattern as tutor_agent.py.
@@ -22,7 +22,8 @@ from ai_service.clients.openai_client import (
     GeneratedSummary,
 )
 from ai_service.clients.course_service_client import CourseServiceClient
-from ai_service.services.content_extractor import ContentExtractor
+from ai_service.services.content_pipeline.content_extractor import ContentExtractor
+from ai_service.services.content_pipeline.pdf_processor import build_pdf_extraction_node
 from ai_service.schemas.instructor import GenerateQuizRequest
 
 logger = structlog.get_logger(__name__)
@@ -56,6 +57,10 @@ class QuizState(TypedDict):
     time_limit_minutes: int | None
 
     # Intermediate (set by nodes)
+    module_title: str  # set by fetch_lessons node
+    module_description: str  # set by fetch_lessons node
+    lessons: list[dict]  # raw lesson data from MongoDB
+    pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
     combined_text: str
     generated_quiz: GeneratedQuiz | None
     validation_passed: bool
@@ -89,6 +94,10 @@ class SummaryState(TypedDict):
     tone: str | None
 
     # Intermediate (set by nodes)
+    module_title: str  # set by fetch_lessons node
+    module_description: str  # set by fetch_lessons node
+    lessons: list[dict]  # raw lesson data from MongoDB
+    pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
     combined_text: str
     generated_summary: GeneratedSummary | None
     validation_passed: bool
@@ -99,53 +108,89 @@ class SummaryState(TypedDict):
     error: str | None
 
 
-# ── Shared Node: Extract Content ──────────────────────────────────
+# ── Shared Node: Fetch Lessons ─────────────────────────────────────
 
 
-def _build_extract_content_node(content_extractor: ContentExtractor):
-    """Factory for the extract_content node (shared by both graphs)."""
+def _build_fetch_lessons_node(content_extractor: ContentExtractor):
+    """Fetch lesson metadata from MongoDB so the PDF extractor knows what to download.
 
-    async def extract_content(state: QuizState | SummaryState) -> dict:
-        """Extract module content from MongoDB and PDFs."""
+    Also returns module_title and module_description so merge_content can build
+    combined_text without refetching module data.
+    """
+
+    async def fetch_lessons(state: dict) -> dict:
         course_id = state["course_id"]
         module_id = state["module_id"]
         source_lesson_ids = state.get("source_lesson_ids")
 
         log = logger.bind(course_id=course_id, module_id=module_id)
-        log.info(
-            "[EXTRACT_CONTENT] Starting content extraction", source_lesson_ids=source_lesson_ids
-        )
+        log.info("[FETCH_LESSONS] Loading lesson data from MongoDB")
 
         try:
-            log.info("[EXTRACT_CONTENT] Calling content_extractor.extract_module_content()")
-            content = await content_extractor.extract_module_content(
+            module_data = await content_extractor.fetch_module_data(
                 course_id, module_id, source_lesson_ids
             )
-            if not content:
-                log.warning("[EXTRACT_CONTENT] No content found for module")
-                return {
-                    "combined_text": "",
-                    "error": "Module not found or has no content",
-                }
+            if not module_data:
+                return {"error": "Module not found or has no content"}
 
-            combined_text = content.get("combined_text", "")
-            if not combined_text:
-                log.warning("[EXTRACT_CONTENT] Content extraction returned empty text")
-                return {
-                    "combined_text": "",
-                    "error": "Module has no extractable content",
-                }
+            return {
+                "lessons": module_data["lessons"],
+                "module_title": module_data["module_title"],
+                "module_description": module_data["module_description"],
+            }
+        except Exception as e:
+            log.exception("[FETCH_LESSONS] Error", error=str(e))
+            return {"error": str(e)}
 
-            log.info(
-                "[EXTRACT_CONTENT] ✓ Content extracted successfully", text_length=len(combined_text)
-            )
+    return fetch_lessons
+
+
+# ── Shared Node: Merge Content ────────────────────────────────────
+
+
+def _build_merge_content_node(content_extractor: ContentExtractor):
+    """Merge MongoDB lesson text + PDF-extracted text into combined_text.
+
+    Expects fetch_lessons and extract_pdfs to have already run,
+    so `lessons`, `pdf_texts`, `module_title`, and `module_description` are populated in state.
+    No refetch of module data required - all needed data is already in state.
+    """
+
+    async def merge_content(state: dict) -> dict:
+        course_id = state["course_id"]
+        module_id = state["module_id"]
+        module_title = state.get("module_title", "")
+        module_description = state.get("module_description", "")
+        lessons = state.get("lessons", [])
+        pdf_texts = state.get("pdf_texts", {})
+
+        log = logger.bind(course_id=course_id, module_id=module_id)
+        log.info("[MERGE_CONTENT] Merging lesson text with PDF text")
+
+        try:
+            if not lessons:
+                return {"combined_text": "", "error": "No lessons to merge"}
+
+            # Build module_data from state (no refetch needed)
+            module_data = {
+                "module_title": module_title,
+                "module_description": module_description,
+                "lessons": lessons,
+            }
+
+            combined_text = ContentExtractor.build_combined_text(module_data, pdf_texts)
+
+            if not combined_text.strip():
+                return {"combined_text": "", "error": "Module has no extractable content"}
+
+            log.info("[MERGE_CONTENT] Content merged successfully", text_length=len(combined_text))
             return {"combined_text": combined_text}
 
         except Exception as e:
-            log.exception("[EXTRACT_CONTENT] ✗ Error extracting content", error=str(e))
+            log.exception("[MERGE_CONTENT] Error", error=str(e))
             return {"error": str(e)}
 
-    return extract_content
+    return merge_content
 
 
 # ── Quiz Nodes ─────────────────────────────────────────────────────
@@ -773,7 +818,8 @@ def build_quiz_graph(
     """Build and compile the quiz generation LangGraph.
 
     Flow:
-      START → extract_content → generate_quiz → validate_quiz ⇄ persist_quiz → END
+      START -> fetch_lessons -> extract_pdfs -> merge_content -> generate_quiz
+            -> validate_quiz ⇄ persist_quiz -> END
 
     Args:
         openai_client: OpenAI client for quiz generation.
@@ -783,40 +829,36 @@ def build_quiz_graph(
     Returns:
         Compiled LangGraph StateGraph ready for invocation.
     """
-    # Create node functions with injected dependencies
-    extract_node = _build_extract_content_node(content_extractor)
+    fetch_lessons_node = _build_fetch_lessons_node(content_extractor)
+    extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    merge_content_node = _build_merge_content_node(content_extractor)
     generate_node = _build_generate_quiz_node(openai_client)
     validate_node = _build_validate_quiz_node()
     persist_node = _build_persist_quiz_node(course_client)
 
-    # Build the graph
     graph = StateGraph(QuizState)
 
-    # Add nodes
-    graph.add_node("extract_content", extract_node)
+    graph.add_node("fetch_lessons", fetch_lessons_node)
+    graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("merge_content", merge_content_node)
     graph.add_node("generate_quiz", generate_node)
     graph.add_node("validate_quiz", validate_node)
     graph.add_node("persist_quiz", persist_node)
 
-    # Define edges
-    graph.add_edge(START, "extract_content")
+    def _error_check(next_node):
+        def router(state):
+            return END if state.get("error") else next_node
 
-    # After extraction, check for errors: if error, END; else generate_quiz
-    def _extract_error_router(state: QuizState) -> str:
-        return END if state.get("error") else "generate_quiz"
+        return router
 
-    graph.add_conditional_edges("extract_content", _extract_error_router)
-
-    # Linear progression through generation and validation
+    graph.add_edge(START, "fetch_lessons")
+    graph.add_conditional_edges("fetch_lessons", _error_check("extract_pdfs"))
+    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_conditional_edges("merge_content", _error_check("generate_quiz"))
     graph.add_edge("generate_quiz", "validate_quiz")
-
-    # Conditional routing after validation: retry or persist
     graph.add_conditional_edges("validate_quiz", _quiz_validation_router)
-
-    # Path to completion
     graph.add_edge("persist_quiz", END)
 
-    # Compile
     return graph.compile()
 
 
@@ -828,7 +870,8 @@ def build_summary_graph(
     """Build and compile the summary generation LangGraph.
 
     Flow:
-      START → extract_content → generate_summary → validate_summary ⇄ persist_summary → END
+      START -> fetch_lessons -> extract_pdfs -> merge_content -> generate_summary
+            -> validate_summary ⇄ persist_summary -> END
 
     Args:
         openai_client: OpenAI client for summary generation.
@@ -838,38 +881,34 @@ def build_summary_graph(
     Returns:
         Compiled LangGraph StateGraph ready for invocation.
     """
-    # Create node functions with injected dependencies
-    extract_node = _build_extract_content_node(content_extractor)
+    fetch_lessons_node = _build_fetch_lessons_node(content_extractor)
+    extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    merge_content_node = _build_merge_content_node(content_extractor)
     generate_node = _build_generate_summary_node(openai_client)
     validate_node = _build_validate_summary_node()
     persist_node = _build_persist_summary_node(course_client)
 
-    # Build the graph
     graph = StateGraph(SummaryState)
 
-    # Add nodes
-    graph.add_node("extract_content", extract_node)
+    graph.add_node("fetch_lessons", fetch_lessons_node)
+    graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("merge_content", merge_content_node)
     graph.add_node("generate_summary", generate_node)
     graph.add_node("validate_summary", validate_node)
     graph.add_node("persist_summary", persist_node)
 
-    # Define edges
-    graph.add_edge(START, "extract_content")
+    def _error_check(next_node):
+        def router(state):
+            return END if state.get("error") else next_node
 
-    # After extraction, check for errors: if error, END; else generate_summary
-    def _extract_error_router(state: SummaryState) -> str:
-        return END if state.get("error") else "generate_summary"
+        return router
 
-    graph.add_conditional_edges("extract_content", _extract_error_router)
-
-    # Linear progression through generation and validation
+    graph.add_edge(START, "fetch_lessons")
+    graph.add_conditional_edges("fetch_lessons", _error_check("extract_pdfs"))
+    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_conditional_edges("merge_content", _error_check("generate_summary"))
     graph.add_edge("generate_summary", "validate_summary")
-
-    # Conditional routing after validation: retry or persist
     graph.add_conditional_edges("validate_summary", _summary_validation_router)
-
-    # Path to completion
     graph.add_edge("persist_summary", END)
 
-    # Compile
     return graph.compile()
