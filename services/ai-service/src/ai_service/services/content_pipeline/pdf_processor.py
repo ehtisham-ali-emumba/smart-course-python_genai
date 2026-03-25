@@ -20,6 +20,26 @@ logger = structlog.get_logger(__name__)
 PDF_MIME_TYPES = {"pdf", "application/pdf"}
 MAX_PAGES_PER_PDF = 200
 MAX_CHARS_PER_RESOURCE = 50_000
+MAX_LOGGED_PAGES_PER_PDF = 5
+PAGE_PREVIEW_CHARS = 220
+
+
+def _log_pdf_page_preview(pdf_log, page_num: int, page_content: str) -> None:
+    """Callback-style helper for gentle per-page extraction observability."""
+    if page_num < MAX_LOGGED_PAGES_PER_PDF:
+        compact = " ".join(page_content.split())
+        pdf_log.info(
+            "PDF page extracted (LLM-enriched)",
+            page=page_num + 1,
+            chars=len(page_content),
+            preview_head=compact[:PAGE_PREVIEW_CHARS],
+            preview_tail=compact[-PAGE_PREVIEW_CHARS:] if compact else "",
+        )
+    elif page_num == MAX_LOGGED_PAGES_PER_PDF:
+        pdf_log.info(
+            "PDF page preview logging capped",
+            logged_pages=MAX_LOGGED_PAGES_PER_PDF,
+        )
 
 
 async def _process_single_pdf(url: str, name: str) -> str | None:
@@ -30,6 +50,7 @@ async def _process_single_pdf(url: str, name: str) -> str | None:
     - Images -> sent to GPT-4o via LLMImageBlobParser, descriptions appended to page_content
     """
     try:
+        pdf_log = logger.bind(resource_name=name)
         loader = PyMuPDFLoader(
             file_path=url,
             mode="page",
@@ -51,8 +72,11 @@ async def _process_single_pdf(url: str, name: str) -> str | None:
             if page_num >= MAX_PAGES_PER_PDF:
                 break
 
-            parts.append(doc.page_content)
-            total_chars += len(doc.page_content)
+            page_content = doc.page_content or ""
+            parts.append(page_content)
+            total_chars += len(page_content)
+
+            _log_pdf_page_preview(pdf_log, page_num, page_content)
 
             if total_chars >= MAX_CHARS_PER_RESOURCE:
                 logger.info("PDF text cap reached", name=name, pages_read=page_num + 1)

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCourse AI Tutor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 280px;
+      background: #16213e;
+      border-right: 1px solid #0f3460;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 20px 16px;
+      border-bottom: 1px solid #0f3460;
+    }
+
+    .sidebar-header h2 {
+      font-size: 16px;
+      color: #e94560;
+      margin-bottom: 12px;
+    }
+
+    .new-chat-btn {
+      width: 100%;
+      padding: 10px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .new-chat-btn:hover { background: #c73652; }
+
+    .chat-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .chat-item {
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      font-size: 13px;
+      color: #aaa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: background 0.15s;
+    }
+
+    .chat-item:hover { background: #1a1a3e; }
+    .chat-item.active { background: #0f3460; color: #fff; }
+
+    .chat-item .chat-title { font-weight: 600; color: inherit; }
+    .chat-item .chat-preview {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Config panel ── */
+    .config-panel {
+      padding: 12px 16px;
+      border-top: 1px solid #0f3460;
+      font-size: 12px;
+    }
+
+    .config-panel label {
+      display: block;
+      margin-bottom: 4px;
+      color: #888;
+      font-size: 11px;
+    }
+
+    .config-panel input, .config-panel select {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 12px;
+    }
+
+    .config-panel input:focus, .config-panel select:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+
+    /* ── Main chat area ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #0f3460;
+      background: #16213e;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .chat-header span { color: #e94560; font-weight: 600; }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .welcome-message {
+      text-align: center;
+      color: #555;
+      margin: auto;
+      max-width: 400px;
+    }
+
+    .welcome-message h3 {
+      font-size: 20px;
+      color: #e94560;
+      margin-bottom: 8px;
+    }
+
+    .message {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      word-wrap: break-word;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: #0f3460;
+      color: #e0e0e0;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: #1e2a4a;
+      color: #d0d0d0;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.assistant .sources {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #2a3a5a;
+      font-size: 11px;
+      color: #777;
+    }
+
+    .message.assistant .sources summary {
+      cursor: pointer;
+      color: #e94560;
+      font-size: 12px;
+    }
+
+    .message.assistant .source-item {
+      margin-top: 4px;
+      padding: 4px 8px;
+      background: #16213e;
+      border-radius: 4px;
+    }
+
+    .message .role-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      color: #e94560;
+    }
+
+    .message.user .role-label { color: #53a8e2; }
+
+    .streaming-indicator {
+      display: inline-block;
+      width: 6px;
+      height: 14px;
+      background: #e94560;
+      animation: blink 0.8s infinite;
+      margin-left: 2px;
+      vertical-align: text-bottom;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ── Input area ── */
+    .input-area {
+      padding: 16px 24px;
+      border-top: 1px solid #0f3460;
+      background: #16213e;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .input-area textarea {
+      flex: 1;
+      padding: 12px;
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      border-radius: 10px;
+      color: #e0e0e0;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      min-height: 44px;
+      max-height: 150px;
+      line-height: 1.4;
+    }
+
+    .input-area textarea:focus { outline: none; border-color: #e94560; }
+
+    .send-btn {
+      padding: 12px 20px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .send-btn:hover { background: #c73652; }
+    .send-btn:disabled { background: #555; cursor: not-allowed; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+    /* ── Markdown-ish rendering ── */
+    .message.assistant code {
+      background: #0f1a30;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .message.assistant pre {
+      background: #0f1a30;
+      padding: 10px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 6px 0;
+    }
+
+    .message.assistant pre code {
+      background: none;
+      padding: 0;
+    }
+
+    /* ── Status toast ── */
+    .status-toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #e94560;
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      z-index: 100;
+      display: none;
+    }
+
+    .status-toast.show { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h2>SmartCourse Tutor</h2>
+    <button class="new-chat-btn" onclick="openNewChat()">+ New Chat</button>
+  </div>
+  <div class="chat-list" id="chatList"></div>
+  <div class="config-panel">
+    <label>Base URL</label>
+    <input id="baseUrl" value="http://localhost:8000" />
+    <label>Bearer Token</label>
+    <input id="bearerToken" type="password" placeholder="paste JWT token" />
+    <label>Course ID</label>
+    <input id="courseId" value="737273b2-a6c8-4454-87cf-775da5ac72a9" />
+    <label>Module ID (optional)</label>
+    <input id="moduleId" value="69c375e6e22e78baa7275806" />
+    <label>Lesson ID (optional)</label>
+    <input id="lessonId" value="69c375eae22e78baa727580c" />
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="chat-header" id="chatHeader">
+    Create or select a chat to start
+  </div>
+  <div class="messages" id="messages">
+    <div class="welcome-message">
+      <h3>AI Tutor</h3>
+      <p>Paste your Bearer Token in the sidebar, then click "+ New Chat" to begin.</p>
+    </div>
+  </div>
+  <div class="input-area">
+    <textarea
+      id="msgInput"
+      placeholder="Ask the tutor anything..."
+      rows="1"
+      onkeydown="handleKey(event)"
+      oninput="autoGrow(this)"
+    ></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<div class="status-toast" id="toast"></div>
+
+<script>
+  // ── State ──
+  const sessions = {};  // { sessionId: { title, courseId, messages: [{role, content, sources?}] } }
+  let activeSessionId = null;
+  let isStreaming = false;
+
+  // ── Helpers ──
+  function $(id) { return document.getElementById(id); }
+
+  function toast(msg, ms = 2500) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  function getHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${$("bearerToken").value.trim()}`,
+    };
+  }
+
+  function autoGrow(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 150) + "px";
+  }
+
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  // ── Render sidebar ──
+  function renderChatList() {
+    const list = $("chatList");
+    list.innerHTML = "";
+    for (const [sid, sess] of Object.entries(sessions)) {
+      const div = document.createElement("div");
+      div.className = "chat-item" + (sid === activeSessionId ? " active" : "");
+      div.onclick = () => switchChat(sid);
+      const lastMsg = sess.messages.filter(m => m.role === "user").pop();
+      div.innerHTML = `
+        <div class="chat-title">${sess.title}</div>
+        <div class="chat-preview">${lastMsg ? lastMsg.content.slice(0, 60) : "No messages yet"}</div>
+      `;
+      list.appendChild(div);
+    }
+  }
+
+  // ── Render messages ──
+  function renderMessages() {
+    const container = $("messages");
+    if (!activeSessionId || !sessions[activeSessionId]) {
+      container.innerHTML = `
+        <div class="welcome-message">
+          <h3>AI Tutor</h3>
+          <p>Paste your Bearer Token in the sidebar, then click "+ New Chat" to begin.</p>
+        </div>`;
+      $("chatHeader").innerHTML = "Create or select a chat to start";
+      return;
+    }
+
+    const sess = sessions[activeSessionId];
+    $("chatHeader").innerHTML = `Session: <span>${activeSessionId.slice(0, 12)}...</span> | ${sess.title}`;
+
+    container.innerHTML = "";
+    for (const msg of sess.messages) {
+      container.appendChild(createMessageEl(msg));
+    }
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function createMessageEl(msg) {
+    const div = document.createElement("div");
+    div.className = "message " + msg.role;
+    let html = `<div class="role-label">${msg.role}</div>`;
+    html += `<div class="content">${formatContent(msg.content)}</div>`;
+
+    if (msg.sources && msg.sources.length > 0) {
+      html += `<div class="sources"><details><summary>${msg.sources.length} source(s) used</summary>`;
+      for (const s of msg.sources) {
+        html += `<div class="source-item"><strong>${s.module_title}</strong> &rsaquo; ${s.lesson_title} (score: ${s.score.toFixed(2)})</div>`;
+      }
+      html += `</details></div>`;
+    }
+
+    div.innerHTML = html;
+    return div;
+  }
+
+  function formatContent(text) {
+    if (!text) return "";
+    // Basic markdown: bold, italic, inline code, code blocks
+    let s = text
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/\n/g, "<br>");
+    return s;
+  }
+
+  // ── Create session ──
+  async function openNewChat() {
+    const token = $("bearerToken").value.trim();
+    const courseId = $("courseId").value.trim();
+    if (!token) {
+      toast("Please paste your Bearer Token first");
+      return;
+    }
+    if (!courseId) {
+      toast("Please fill in Course ID");
+      return;
+    }
+
+    const body = {
+      course_id: courseId,
+    };
+    const moduleId = $("moduleId").value.trim();
+    const lessonId = $("lessonId").value.trim();
+    if (moduleId) body.module_id = moduleId;
+    if (lessonId) body.lesson_id = lessonId;
+
+    try {
+      toast("Creating session...");
+      const res = await fetch(`${$("baseUrl").value}/api/v1/ai/tutor/sessions`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast(`Error: ${err.detail || res.statusText}`);
+        return;
+      }
+
+      const data = await res.json();
+      const sid = data.session_id;
+
+      sessions[sid] = {
+        title: `Chat ${Object.keys(sessions).length + 1}`,
+        courseId: courseId,
+        messages: [],
+      };
+
+      if (data.initial_reply) {
+        sessions[sid].messages.push({ role: "assistant", content: data.initial_reply });
+      }
+
+      activeSessionId = sid;
+      renderChatList();
+      renderMessages();
+      toast("Session created!");
+      $("msgInput").focus();
+    } catch (e) {
+      console.error("openNewChat error:", e);
+      toast("Failed to connect: " + e.message);
+    }
+  }
+
+  // ── Switch chat ──
+  function switchChat(sid) {
+    if (isStreaming) return;
+    activeSessionId = sid;
+    renderChatList();
+    renderMessages();
+  }
+
+  // ── Send message (streaming) ──
+  async function sendMessage() {
+    if (isStreaming) return;
+
+    const input = $("msgInput");
+    const text = input.value.trim();
+    if (!text || !activeSessionId) return;
+
+    const sess = sessions[activeSessionId];
+
+    // Update title from first user message
+    if (sess.messages.filter(m => m.role === "user").length === 0) {
+      sess.title = text.slice(0, 40) + (text.length > 40 ? "..." : "");
+    }
+
+    // Add user message
+    sess.messages.push({ role: "user", content: text });
+    input.value = "";
+    input.style.height = "auto";
+    renderMessages();
+    renderChatList();
+
+    // Add empty assistant message for streaming
+    const assistantMsg = { role: "assistant", content: "", sources: [] };
+    sess.messages.push(assistantMsg);
+
+    isStreaming = true;
+    $("sendBtn").disabled = true;
+
+    const body = { message: text };
+    const moduleId = $("moduleId").value.trim();
+    const lessonId = $("lessonId").value.trim();
+    if (moduleId) body.module_id = moduleId;
+    if (lessonId) body.lesson_id = lessonId;
+
+    try {
+      const res = await fetch(
+        `${$("baseUrl").value}/api/v1/ai/tutor/sessions/${activeSessionId}/messages/stream`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify(body),
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        assistantMsg.content = `Error: ${err.detail || res.statusText}`;
+        renderMessages();
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6);
+          if (!jsonStr) continue;
+
+          try {
+            const evt = JSON.parse(jsonStr);
+
+            if (evt.event === "token") {
+              assistantMsg.content += evt.content;
+              updateStreamingMessage(assistantMsg);
+            } else if (evt.event === "sources") {
+              assistantMsg.sources = evt.sources || [];
+            } else if (evt.event === "done") {
+              // streaming complete
+            } else if (evt.event === "error") {
+              assistantMsg.content += `\n\n[Error: ${evt.message}]`;
+            }
+          } catch (_) { /* ignore parse errors */ }
+        }
+      }
+    } catch (e) {
+      assistantMsg.content = `Connection error: ${e.message}`;
+    } finally {
+      isStreaming = false;
+      $("sendBtn").disabled = false;
+      renderMessages();
+      $("msgInput").focus();
+    }
+  }
+
+  // Update the last assistant message in the DOM during streaming (without full re-render)
+  function updateStreamingMessage(msg) {
+    const container = $("messages");
+    let lastEl = container.querySelector(".message.assistant:last-child");
+
+    if (!lastEl) {
+      lastEl = createMessageEl(msg);
+      container.appendChild(lastEl);
+    }
+
+    const contentEl = lastEl.querySelector(".content");
+    contentEl.innerHTML = formatContent(msg.content) + '<span class="streaming-indicator"></span>';
+    container.scrollTop = container.scrollHeight;
+  }
+</script>
+
+</body>
+</html>

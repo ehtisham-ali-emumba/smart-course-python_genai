@@ -3,6 +3,7 @@
 import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from ai_service.api.dependencies import get_authenticated_user, get_tutor_service
 from ai_service.schemas.tutor import (
@@ -62,3 +63,39 @@ async def send_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
+
+
+@router.post(
+    "/sessions/{session_id}/messages/stream",
+    status_code=status.HTTP_200_OK,
+)
+async def stream_message(
+    session_id: str,
+    request: SendMessageRequest,
+    user_info: tuple[_uuid.UUID, str] = Depends(get_authenticated_user),
+    tutor_service: TutorService = Depends(get_tutor_service),
+) -> StreamingResponse:
+    """Stream a tutor response as Server-Sent Events."""
+    user_id = user_info[0]
+
+    try:
+        session = tutor_service._sessions.get(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found.")
+        if session["student_id"] != user_id:
+            raise ValueError("Session does not belong to this user.")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return StreamingResponse(
+        tutor_service.stream_message(session_id, user_id, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

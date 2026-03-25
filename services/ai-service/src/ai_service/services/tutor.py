@@ -1,8 +1,13 @@
 """Student AI tutor service — LangGraph-powered RAG tutoring."""
 
+import json
 import structlog
 import uuid as _uuid
+from collections.abc import AsyncIterator
+from typing import Any, cast
 from uuid import uuid4
+
+from langchain_core.messages import AIMessageChunk
 
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
@@ -153,6 +158,75 @@ class TutorService:
         return SendMessageResponse(
             user_message=user_message,
             assistant_message=assistant_message,
+        )
+
+    async def stream_message(
+        self,
+        session_id: str,
+        user_id: _uuid.UUID,
+        request: SendMessageRequest,
+    ) -> AsyncIterator[str]:
+        """Stream a tutor response as SSE events using LangGraph native streaming."""
+        log = logger.bind(session_id=session_id, user_id=user_id)
+
+        session = self._sessions.get(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found. Please create a new session.")
+        if session["student_id"] != user_id:
+            raise ValueError("Session does not belong to this user.")
+
+        module_id = request.module_id or session.get("module_id")
+        lesson_id = request.lesson_id or session.get("lesson_id")
+
+        initial_state: TutorState = {
+            "query": request.message,
+            "course_id": session["course_id"],
+            "module_id": module_id,
+            "lesson_id": lesson_id,
+            "conversation_history": session["history"],
+        }
+
+        full_response_tokens: list[str] = []
+
+        try:
+            async for mode, payload in self._tutor_graph.astream(
+                initial_state,
+                stream_mode=["messages", "custom"],
+            ):
+                if mode == "custom":
+                    yield f"data: {json.dumps(payload)}\n\n"
+
+                elif mode == "messages":
+                    chunk = cast(AIMessageChunk, payload[0])  # type: ignore[index]
+                    metadata = cast(dict[str, Any], payload[1])  # type: ignore[index]
+
+                    content = chunk.content
+                    if metadata.get("langgraph_node") == "generate" and isinstance(content, str) and content:
+                        full_response_tokens.append(content)
+                        yield f"data: {json.dumps({'event': 'token', 'content': content})}\n\n"
+
+        except Exception as e:
+            log.error("Streaming failed", error=str(e))
+            yield (
+                "data: "
+                f"{json.dumps({'event': 'error', 'message': 'Response generation failed. Please try again.'})}"
+                "\n\n"
+            )
+            return
+
+        complete_text = "".join(full_response_tokens)
+        session["history"].append({"role": "user", "content": request.message})
+        session["history"].append({"role": "assistant", "content": complete_text})
+
+        if len(session["history"]) > MAX_HISTORY_PER_SESSION:
+            session["history"] = session["history"][-MAX_HISTORY_PER_SESSION:]
+
+        message_id = uuid4().hex
+        yield f"data: {json.dumps({'event': 'done', 'message_id': message_id})}\n\n"
+
+        log.info(
+            "Streamed tutor response",
+            response_length=len(complete_text),
         )
 
     async def _run_agent(

@@ -1,19 +1,23 @@
 """LangGraph-powered AI Tutor agent.
 
 Implements a 2-node state machine:
-  RETRIEVE → GENERATE
+    RETRIEVE → GENERATE
 
 Uses the existing VectorStoreRepository for RAG search and OpenAIClient
-for embeddings + chat completion. Does NOT use LangChain's LLM wrappers.
+for embeddings, plus ChatOpenAI for LangGraph-native token streaming.
 """
 
 import structlog
 import uuid as _uuid
 from typing import TypedDict
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 
 from ai_service.clients.openai_client import OpenAIClient
+from ai_service.config import settings
 from ai_service.repositories.vector_store import VectorStoreRepository
 
 logger = structlog.get_logger(__name__)
@@ -86,6 +90,8 @@ def _build_retrieve_node(
 
     async def retrieve(state: TutorState) -> dict:
         """Embed the query and search Qdrant for relevant chunks."""
+        writer = get_stream_writer()
+
         query = state["query"]
         course_id = state["course_id"]
         module_id = state.get("module_id")
@@ -149,6 +155,13 @@ def _build_retrieve_node(
             for chunk in chunks
         ]
 
+        writer(
+            {
+                "event": "sources",
+                "sources": sources,
+            }
+        )
+
         return {
             "retrieved_chunks": chunks,
             "context_text": context_text,
@@ -159,46 +172,52 @@ def _build_retrieve_node(
 
 
 def _build_generate_node(openai_client: OpenAIClient):
-    """Factory that creates the GENERATE node function with injected dependencies."""
+    """Factory that creates the GENERATE node function.
+
+    Uses ChatOpenAI for LangGraph-native token streaming support.
+    """
+
+    llm = ChatOpenAI(
+        model=settings.OPENAI_MODEL,
+        api_key=settings.OPENAI_API_KEY,
+        temperature=0.7,
+        max_tokens=1024,
+        streaming=True,
+    )
 
     async def generate(state: TutorState) -> dict:
-        """Build the prompt and call GPT-4o-mini to generate a response."""
+        """Build the prompt and generate a response via ChatOpenAI."""
         query = state["query"]
         context_text = state.get("context_text", "")
         conversation_history = state.get("conversation_history", [])
 
-        # 1. Build the system prompt with retrieved context
         system_prompt = TUTOR_SYSTEM_PROMPT.format(context=context_text)
 
-        # 2. Build message list: system + history + current question
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [SystemMessage(content=system_prompt)]
 
         # Add conversation history (last N turns to stay within token limits)
         # Keep last 10 messages (5 turns) to avoid token overflow
         max_history = 10
         recent_history = conversation_history[-max_history:]
         for msg in recent_history:
-            messages.append(
-                {
-                    "role": msg["role"],
-                    "content": msg["content"],
-                }
-            )
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
 
         # Add the current question
-        messages.append({"role": "user", "content": query})
+        messages.append(HumanMessage(content=query))
 
-        # 3. Call OpenAI (using our existing client, NOT LangChain's wrapper)
-        response_text = await openai_client.chat_completion(messages)
+        response = await llm.ainvoke(messages)
 
         logger.info(
             "Tutor response generated",
-            response_length=len(response_text),
+            response_length=len(response.content),
             history_messages=len(recent_history),
             context_chunks=len(state.get("retrieved_chunks", [])),
         )
 
-        return {"response": response_text}
+        return {"response": response.content}
 
     return generate
 
