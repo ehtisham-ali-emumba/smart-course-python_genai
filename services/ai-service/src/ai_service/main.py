@@ -11,8 +11,15 @@ from ai_service.core.mongodb import connect_mongodb, close_mongodb
 from ai_service.core.redis import connect_redis, close_redis, get_redis
 from ai_service.repositories.vector_store import VectorStoreRepository
 from ai_service.clients.openai_client import OpenAIClient
-from ai_service.core.service_factory import create_index_service, create_tutor_service, create_instructor_service
+from ai_service.core.service_factory import (
+    create_index_service,
+    create_tutor_service,
+    create_instructor_service,
+)
 from ai_service.api.dependencies import set_index_service, set_tutor_service, set_instructor_service
+from ai_service.patches import pymupdf_images
+
+pymupdf_images.apply()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,7 +56,9 @@ async def lifespan(app: FastAPI):
 
     _initialize_services(_vector_store)
 
-    logger.info("AI Service startup complete (MongoDB + Redis + Qdrant + Index + Tutor + Instructor)")
+    logger.info(
+        "AI Service startup complete (MongoDB + Redis + Qdrant + Index + Tutor + Instructor)"
+    )
 
     yield
 

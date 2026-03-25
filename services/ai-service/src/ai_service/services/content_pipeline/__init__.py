@@ -6,15 +6,11 @@ single cohesive package used by both instructor and index flows.
 
 from ai_service.services.content_pipeline.text_chunker import TextChunker, TextChunk
 from ai_service.services.content_pipeline.content_extractor import ContentExtractor
-from ai_service.services.content_pipeline.pdf_processor import (
-    build_pdf_extraction_node,
-    PDFExtractionResult,
-)
+from ai_service.services.content_pipeline.pdf_processor import build_pdf_extraction_node
 
 __all__ = [
     "TextChunker",
     "TextChunk",
     "ContentExtractor",
     "build_pdf_extraction_node",
-    "PDFExtractionResult",
 ]
