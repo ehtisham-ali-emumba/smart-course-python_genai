@@ -138,7 +138,6 @@ class IndexService:
         try:
             await self.status_tracker.set_in_progress(course_id, "course", "index")
 
-            # Fetch course structure (just module IDs — content extraction is inside the graph)
             course_data = await self.content_extractor.fetch_course_data(course_id)
             if not course_data:
                 await self.status_tracker.set_failed(
@@ -146,15 +145,20 @@ class IndexService:
                 )
                 return
 
-            total_chunks = 0
-            for module_data in course_data["modules"]:
-                chunks_stored, error = await self._invoke_module_index_graph(
-                    course_id=course_id,
-                    module_id=module_data["module_id"],
-                    force_rebuild=force_rebuild,
+            # Run all modules in parallel (like Promise.all in JS)
+            results = await asyncio.gather(
+                *(
+                    self._invoke_module_index_graph(
+                        course_id=course_id,
+                        module_id=module_data["module_id"],
+                        force_rebuild=force_rebuild,
+                    )
+                    for module_data in course_data["modules"]
                 )
-                if not error:
-                    total_chunks += chunks_stored
+            )
+
+            # Each result is a tuple: (chunks_stored, error)
+            total_chunks = sum(chunks for chunks, error in results if not error)
 
             await self.status_tracker.set_completed(course_id, "course", "index")
             log.info(

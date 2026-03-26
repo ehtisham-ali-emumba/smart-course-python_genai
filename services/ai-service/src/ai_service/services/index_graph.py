@@ -9,6 +9,7 @@ on errors, preventing wasted work downstream.
 Follows the same closure/factory pattern as tutor_agent.py and instructor_graphs.py.
 """
 
+import asyncio
 import uuid as _uuid
 import structlog
 from pydantic import BaseModel, Field
@@ -191,31 +192,38 @@ def _build_embed_node(openai_client: OpenAIClient):
     """Embed all chunks in batches using OpenAI text-embedding-3-small."""
 
     async def embed_chunks(state: IndexState) -> dict:
-        lesson_chunks: dict[str, list[dict]] = state.lesson_chunks
-        course_id = state.course_id
-        module_id = state.module_id
+        lesson_chunks = state.lesson_chunks
+        log = logger.bind(course_id=state.course_id, module_id=state.module_id)
 
-        log = logger.bind(course_id=course_id, module_id=module_id)
+        # Flatten all chunks into one list for minimal API calls
+        flat_texts = []
+        index_map = []  # (lesson_id, local_index) to reconstruct later
+        for lesson_id, chunks in lesson_chunks.items():
+            for i, c in enumerate(chunks):
+                flat_texts.append(c["text"])
+                index_map.append((lesson_id, i))
 
-        total_texts = sum(len(chunks) for chunks in lesson_chunks.values())
-        log.info("[EMBED] Starting embedding", total_texts=total_texts)
+        total = len(flat_texts)
+        log.info("[EMBED] Starting embedding", total_texts=total)
 
         try:
+            # Embed everything in batches (but all batches can also run in parallel)
+            all_embeddings = []
+            tasks = []
+            for i in range(0, total, EMBEDDING_BATCH_SIZE):
+                batch = flat_texts[i : i + EMBEDDING_BATCH_SIZE]
+                tasks.append(openai_client.embed_texts(batch))
+
+            batch_results = await asyncio.gather(*tasks)
+            for batch_embs in batch_results:
+                all_embeddings.extend(batch_embs)
+
+            # Reconstruct per-lesson structure
             lesson_embeddings: dict[str, list[list[float]]] = {}
+            for (lesson_id, _), embedding in zip(index_map, all_embeddings):
+                lesson_embeddings.setdefault(lesson_id, []).append(embedding)
 
-            for lesson_id, chunks in lesson_chunks.items():
-                texts = [c["text"] for c in chunks]
-                all_embeddings: list[list[float]] = []
-
-                # Batch embed (max EMBEDDING_BATCH_SIZE per API call)
-                for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-                    batch = texts[i : i + EMBEDDING_BATCH_SIZE]
-                    batch_embeddings = await openai_client.embed_texts(batch)
-                    all_embeddings.extend(batch_embeddings)
-
-                lesson_embeddings[lesson_id] = all_embeddings
-
-            log.info("[EMBED] Embedding complete", total_embedded=total_texts)
+            log.info("[EMBED] Embedding complete", total_embedded=total)
             return {"lesson_embeddings": lesson_embeddings}
 
         except Exception as e:
@@ -232,50 +240,38 @@ def _build_store_node(vector_store: VectorStoreRepository):
     """Upsert embedded chunks into Qdrant with full metadata."""
 
     async def store_vectors(state: IndexState) -> dict:
-        course_id = state.course_id
-        module_id = state.module_id
-        module_title = state.module_title
-        lesson_chunks: dict[str, list[dict]] = state.lesson_chunks
-        lesson_embeddings: dict[str, list[list[float]]] = state.lesson_embeddings
-        lessons = state.lessons
-
-        log = logger.bind(course_id=course_id, module_id=module_id)
+        log = logger.bind(course_id=state.course_id, module_id=state.module_id)
         log.info("[STORE] Starting vector storage")
 
-        # Build lesson_id → title mapping
-        lesson_title_map = {lesson["lesson_id"]: lesson.get("title", "") for lesson in lessons}
+        lesson_title_map = {l["lesson_id"]: l.get("title", "") for l in state.lessons}
 
         try:
-            total_stored = 0
 
-            for lesson_id in lesson_chunks:
-                chunks = lesson_chunks[lesson_id]
-                embeddings = lesson_embeddings[lesson_id]
-
+            async def _upsert_lesson(lesson_id: str) -> int:
+                chunks = state.lesson_chunks[lesson_id]
+                embeddings = state.lesson_embeddings[lesson_id]
                 chunk_records = [
                     {
                         "text": chunk["text"],
-                        "embedding": embedding,
+                        "embedding": emb,
                         "chunk_index": chunk["chunk_index"],
                         "lesson_title": lesson_title_map.get(lesson_id, ""),
-                        "module_title": module_title,
+                        "module_title": state.module_title,
                     }
-                    for chunk, embedding in zip(chunks, embeddings)
+                    for chunk, emb in zip(chunks, embeddings)
                 ]
-
-                stored = await vector_store.upsert_chunks(
-                    course_id=course_id,
-                    module_id=module_id,
+                return await vector_store.upsert_chunks(
+                    course_id=state.course_id,
+                    module_id=state.module_id,
                     lesson_id=lesson_id,
                     chunks=chunk_records,
                 )
-                total_stored += stored
+
+            results = await asyncio.gather(*(_upsert_lesson(lid) for lid in state.lesson_chunks))
+            total_stored = sum(results)
 
             log.info("[STORE] Vector storage complete", total_stored=total_stored)
-            return {
-                "total_chunks_stored": total_stored,
-                "completed": True,
-            }
+            return {"total_chunks_stored": total_stored, "completed": True}
 
         except Exception as e:
             log.exception("[STORE] Storage failed", error=str(e))
