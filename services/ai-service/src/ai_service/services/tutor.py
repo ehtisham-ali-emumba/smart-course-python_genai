@@ -24,7 +24,7 @@ from ai_service.schemas.tutor import (
 logger = structlog.get_logger(__name__)
 
 # Max conversation history entries to keep in memory per session
-MAX_HISTORY_PER_SESSION = 50
+MAX_HISTORY_PER_SESSION = 20
 
 
 class TutorService:
@@ -201,7 +201,11 @@ class TutorService:
                     metadata = cast(dict[str, Any], payload[1])  # type: ignore[index]
 
                     content = chunk.content
-                    if metadata.get("langgraph_node") == "generate" and isinstance(content, str) and content:
+                    if (
+                        metadata.get("langgraph_node") == "generate"
+                        and isinstance(content, str)
+                        and content
+                    ):
                         full_response_tokens.append(content)
                         yield f"data: {json.dumps({'event': 'token', 'content': content})}\n\n"
 
