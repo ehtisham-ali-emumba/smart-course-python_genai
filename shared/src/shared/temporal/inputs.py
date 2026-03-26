@@ -56,3 +56,24 @@ class CoursePublishWorkflowOutput:
     steps_completed: list[str] = field(default_factory=list)
     steps_failed: list[str] = field(default_factory=list)
     error_message: str | None = None
+
+
+@dataclass
+class CourseRagIndexingChildWorkflowInput:
+    """Input for the CourseRagIndexingChildWorkflow."""
+
+    course_id: str
+    instructor_id: str
+    user_id: str
+    course_title: str
+
+
+@dataclass
+class CourseRagIndexingChildWorkflowOutput:
+    """Output from the CourseRagIndexingChildWorkflow."""
+
+    workflow_id: str
+    course_id: str
+    success: bool
+    indexing_status: str = "not_started"
+    error_message: str | None = None

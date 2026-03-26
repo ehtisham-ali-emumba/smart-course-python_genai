@@ -15,13 +15,15 @@ from core_service.temporal.workflows.course_publish import (
     CoursePublishWorkflow,
     CoursePublishWorkflowInput,
     CoursePublishWorkflowOutput,
+    CourseRagIndexingChildWorkflow,
+    ALL_WORKFLOWS as _course_publish_workflows,
     ALL_ACTIVITIES as _course_publish_activities,
 )
 
 # All workflows registered with the Temporal worker
 ALL_WORKFLOWS = [
     EnrollmentWorkflow,
-    CoursePublishWorkflow,
+    *_course_publish_workflows,
 ]
 
 # All activities aggregated from every workflow's activities package
@@ -34,6 +36,7 @@ __all__ = [
     "CoursePublishWorkflow",
     "CoursePublishWorkflowInput",
     "CoursePublishWorkflowOutput",
+    "CourseRagIndexingChildWorkflow",
     "ALL_WORKFLOWS",
     "ALL_ACTIVITIES",
 ]

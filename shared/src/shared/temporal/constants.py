@@ -16,6 +16,7 @@ class Workflows:
 
     ENROLLMENT = "EnrollmentWorkflow"
     COURSE_PUBLISH = "CoursePublishWorkflow"
+    COURSE_RAG_INDEXING_CHILD = "CourseRagIndexingChildWorkflow"
 
 
 class Activities:
