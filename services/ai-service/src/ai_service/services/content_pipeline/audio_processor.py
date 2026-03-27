@@ -12,8 +12,9 @@ Concurrency is controlled via AUDIO_TRANSCRIPTION_SEMAPHORE.
 import asyncio
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
-import httpx
+import boto3
 import structlog
 from openai import AsyncOpenAI
 
@@ -54,23 +55,41 @@ def _is_audio_resource(resource: dict) -> bool:
     return Path(url.split("?")[0]).suffix.lower() in AUDIO_EXTENSIONS
 
 
+def _s3_key_from_url(url: str) -> str:
+    """Extract S3 key from a virtual-hosted S3 URL.
+
+    https://{bucket}.s3.{region}.amazonaws.com/{key}  →  {key}
+    """
+    return urlparse(url).path.lstrip("/")
+
+
 async def _download_audio(url: str, name: str) -> bytes | None:
-    """Download audio file from S3 URL. Returns bytes or None on failure."""
+    """Download private S3 audio file using boto3. Returns bytes or None on failure."""
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        key = _s3_key_from_url(url)
+        s3 = boto3.client(
+            "s3",
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        )
 
-            if len(response.content) > MAX_FILE_SIZE_BYTES:
-                logger.warning(
-                    "Audio file too large for Whisper API",
-                    name=name,
-                    size_mb=len(response.content) / (1024 * 1024),
-                    limit_mb=MAX_FILE_SIZE_MB,
-                )
-                return None
+        def _sync_get() -> bytes:
+            resp = s3.get_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+            return resp["Body"].read()
 
-            return response.content
+        content = await asyncio.to_thread(_sync_get)
+
+        if len(content) > MAX_FILE_SIZE_BYTES:
+            logger.warning(
+                "Audio file too large for Whisper API",
+                name=name,
+                size_mb=len(content) / (1024 * 1024),
+                limit_mb=MAX_FILE_SIZE_MB,
+            )
+            return None
+
+        return content
     except Exception as e:
         logger.warning("Audio download failed", name=name, error=str(e))
         return None

@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://qdrant:6333"
     QDRANT_COLLECTION: str = "course_embeddings"
 
+    # S3 (private audio/PDF download — same bucket as course-service)
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "ap-southeast-2"
+    S3_BUCKET_NAME: str = "smartcourse-uploads-bucket"
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 
