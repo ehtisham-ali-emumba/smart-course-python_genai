@@ -10,6 +10,7 @@ Follows the same closure/factory pattern as tutor_agent.py and instructor_graphs
 """
 
 import asyncio
+from ai_service.rate_limiters import EMBEDDING_SEMAPHORE
 import uuid as _uuid
 import structlog
 from pydantic import BaseModel, Field
@@ -206,13 +207,17 @@ def _build_embed_node(openai_client: OpenAIClient):
         total = len(flat_texts)
         log.info("[EMBED] Starting embedding", total_texts=total)
 
+        async def _rate_limited_embed(batch):
+            async with EMBEDDING_SEMAPHORE:
+                return await openai_client.embed_texts(batch)
+
         try:
             # Embed everything in batches (but all batches can also run in parallel)
             all_embeddings = []
             tasks = []
             for i in range(0, total, EMBEDDING_BATCH_SIZE):
                 batch = flat_texts[i : i + EMBEDDING_BATCH_SIZE]
-                tasks.append(openai_client.embed_texts(batch))
+                tasks.append(_rate_limited_embed(batch))
 
             batch_results = await asyncio.gather(*tasks)
             for batch_embs in batch_results:

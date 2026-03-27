@@ -8,12 +8,15 @@ Requires the monkey-patch in ai_service.patches.pymupdf_images to be applied
 at startup (fixes langchain-community 0.4.1 BytesIO bug).
 """
 
+import asyncio
+
 import structlog
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.document_loaders.parsers import LLMImageBlobParser
 from langchain_openai import ChatOpenAI
 
 from ai_service.config import settings
+from ai_service.rate_limiters import PDF_VISION_SEMAPHORE
 
 logger = structlog.get_logger(__name__)
 
@@ -49,49 +52,50 @@ async def _process_single_pdf(url: str, name: str) -> str | None:
     - Text -> extracted directly into page_content (NOT sent to LLM)
     - Images -> sent to GPT-4o via LLMImageBlobParser, descriptions appended to page_content
     """
-    try:
-        pdf_log = logger.bind(resource_name=name)
-        loader = PyMuPDFLoader(
-            file_path=url,
-            mode="page",
-            images_inner_format="markdown-img",
-            images_parser=LLMImageBlobParser(
-                model=ChatOpenAI(
-                    model="gpt-4o",
-                    max_tokens=1024,
-                    api_key=settings.OPENAI_API_KEY,
-                )
-            ),
-        )
+    async with PDF_VISION_SEMAPHORE:
+        try:
+            pdf_log = logger.bind(resource_name=name)
+            loader = PyMuPDFLoader(
+                file_path=url,
+                mode="page",
+                images_inner_format="markdown-img",
+                images_parser=LLMImageBlobParser(
+                    model=ChatOpenAI(
+                        model="gpt-4o",
+                        max_tokens=1024,
+                        api_key=settings.OPENAI_API_KEY,
+                    )
+                ),
+            )
 
-        parts: list[str] = []
-        total_chars = 0
+            parts: list[str] = []
+            total_chars = 0
 
-        for doc in loader.lazy_load():
-            page_num = doc.metadata.get("page", len(parts))
-            if page_num >= MAX_PAGES_PER_PDF:
-                break
+            for doc in loader.lazy_load():
+                page_num = doc.metadata.get("page", len(parts))
+                if page_num >= MAX_PAGES_PER_PDF:
+                    break
 
-            page_content = doc.page_content or ""
-            parts.append(page_content)
-            total_chars += len(page_content)
+                page_content = doc.page_content or ""
+                parts.append(page_content)
+                total_chars += len(page_content)
 
-            _log_pdf_page_preview(pdf_log, page_num, page_content)
+                _log_pdf_page_preview(pdf_log, page_num, page_content)
 
-            if total_chars >= MAX_CHARS_PER_RESOURCE:
-                logger.info("PDF text cap reached", name=name, pages_read=page_num + 1)
-                break
+                if total_chars >= MAX_CHARS_PER_RESOURCE:
+                    logger.info("PDF text cap reached", name=name, pages_read=page_num + 1)
+                    break
 
-        text = "\n".join(parts).strip()[:MAX_CHARS_PER_RESOURCE]
-        if not text:
+            text = "\n".join(parts).strip()[:MAX_CHARS_PER_RESOURCE]
+            if not text:
+                return None
+
+            logger.info("PDF extraction complete", name=name, pages=len(parts), chars=len(text))
+            return text
+
+        except Exception as e:
+            logger.warning("PDF extraction failed", name=name, error=str(e))
             return None
-
-        logger.info("PDF extraction complete", name=name, pages=len(parts), chars=len(text))
-        return text
-
-    except Exception as e:
-        logger.warning("PDF extraction failed", name=name, error=str(e))
-        return None
 
 
 def build_pdf_extraction_node(openai_client=None):
@@ -114,9 +118,7 @@ def build_pdf_extraction_node(openai_client=None):
         log = logger.bind(num_lessons=len(lessons))
         log.info("[PDF_PROCESSOR] Starting PDF extraction for all lessons")
 
-        pdf_texts: dict[str, str] = {}
-
-        for lesson in lessons:
+        async def _extract_lesson_pdfs(lesson: dict) -> tuple[str, str] | None:
             lesson_id = lesson["lesson_id"]
             resources = lesson.get("resources", [])
             pdf_resources = [
@@ -126,21 +128,26 @@ def build_pdf_extraction_node(openai_client=None):
                 and r.get("type", "").lower() in PDF_MIME_TYPES
                 and r.get("url", "")
             ]
-
             if not pdf_resources:
-                continue
+                return None
 
-            lesson_parts: list[str] = []
-            for resource in pdf_resources:
-                text = await _process_single_pdf(
-                    resource["url"],
-                    resource.get("name", "unknown"),
-                )
-                if text:
-                    lesson_parts.append(f"[Resource: {resource.get('name', 'unknown')}]\n{text}")
+            # Process PDFs for this lesson in parallel (semaphore limits concurrency)
+            texts = await asyncio.gather(
+                *(_process_single_pdf(r["url"], r.get("name", "unknown")) for r in pdf_resources)
+            )
+            parts = [
+                f"[Resource: {r.get('name', 'unknown')}]\n{text}"
+                for r, text in zip(pdf_resources, texts)
+                if text
+            ]
+            if parts:
+                return lesson_id, "\n\n".join(parts)
+            return None
 
-            if lesson_parts:
-                pdf_texts[lesson_id] = "\n\n".join(lesson_parts)
+        # Run all lessons in parallel
+        results = await asyncio.gather(*(_extract_lesson_pdfs(lesson) for lesson in lessons))
+
+        pdf_texts = {lid: text for r in results if r for lid, text in [r]}
 
         log.info(
             "[PDF_PROCESSOR] PDF extraction complete",
