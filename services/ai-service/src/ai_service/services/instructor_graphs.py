@@ -24,6 +24,7 @@ from ai_service.clients.openai_client import (
 from ai_service.clients.course_service_client import CourseServiceClient
 from ai_service.services.content_pipeline.content_extractor import ContentExtractor
 from ai_service.services.content_pipeline.pdf_processor import build_pdf_extraction_node
+from ai_service.services.content_pipeline.audio_processor import build_audio_extraction_node
 from ai_service.schemas.instructor import GenerateQuizRequest
 
 logger = structlog.get_logger(__name__)
@@ -61,6 +62,7 @@ class QuizState(TypedDict):
     module_description: str  # set by fetch_lessons node
     lessons: list[dict]  # raw lesson data from MongoDB
     pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
+    audio_texts: dict[str, str]  # lesson_id -> audio transcript from extract_audio node
     combined_text: str
     generated_quiz: GeneratedQuiz | None
     validation_passed: bool
@@ -98,6 +100,7 @@ class SummaryState(TypedDict):
     module_description: str  # set by fetch_lessons node
     lessons: list[dict]  # raw lesson data from MongoDB
     pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
+    audio_texts: dict[str, str]  # lesson_id -> audio transcript from extract_audio node
     combined_text: str
     generated_summary: GeneratedSummary | None
     validation_passed: bool
@@ -163,9 +166,10 @@ def _build_merge_content_node(content_extractor: ContentExtractor):
         module_description = state.get("module_description", "")
         lessons = state.get("lessons", [])
         pdf_texts = state.get("pdf_texts", {})
+        audio_texts = state.get("audio_texts", {})
 
         log = logger.bind(course_id=course_id, module_id=module_id)
-        log.info("[MERGE_CONTENT] Merging lesson text with PDF text")
+        log.info("[MERGE_CONTENT] Merging lesson text with PDF and audio text")
 
         try:
             if not lessons:
@@ -178,7 +182,9 @@ def _build_merge_content_node(content_extractor: ContentExtractor):
                 "lessons": lessons,
             }
 
-            combined_text = ContentExtractor.build_combined_text(module_data, pdf_texts)
+            combined_text = ContentExtractor.build_combined_text(
+                module_data, pdf_texts, audio_texts
+            )
 
             if not combined_text.strip():
                 return {"combined_text": "", "error": "Module has no extractable content"}
@@ -831,6 +837,7 @@ def build_quiz_graph(
     """
     fetch_lessons_node = _build_fetch_lessons_node(content_extractor)
     extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    extract_audio_node = build_audio_extraction_node(openai_client)
     merge_content_node = _build_merge_content_node(content_extractor)
     generate_node = _build_generate_quiz_node(openai_client)
     validate_node = _build_validate_quiz_node()
@@ -840,6 +847,7 @@ def build_quiz_graph(
 
     graph.add_node("fetch_lessons", fetch_lessons_node)
     graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("extract_audio", extract_audio_node)
     graph.add_node("merge_content", merge_content_node)
     graph.add_node("generate_quiz", generate_node)
     graph.add_node("validate_quiz", validate_node)
@@ -853,7 +861,8 @@ def build_quiz_graph(
 
     graph.add_edge(START, "fetch_lessons")
     graph.add_conditional_edges("fetch_lessons", _error_check("extract_pdfs"))
-    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_edge("extract_pdfs", "extract_audio")
+    graph.add_edge("extract_audio", "merge_content")
     graph.add_conditional_edges("merge_content", _error_check("generate_quiz"))
     graph.add_edge("generate_quiz", "validate_quiz")
     graph.add_conditional_edges("validate_quiz", _quiz_validation_router)
@@ -883,6 +892,7 @@ def build_summary_graph(
     """
     fetch_lessons_node = _build_fetch_lessons_node(content_extractor)
     extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    extract_audio_node = build_audio_extraction_node(openai_client)
     merge_content_node = _build_merge_content_node(content_extractor)
     generate_node = _build_generate_summary_node(openai_client)
     validate_node = _build_validate_summary_node()
@@ -892,6 +902,7 @@ def build_summary_graph(
 
     graph.add_node("fetch_lessons", fetch_lessons_node)
     graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("extract_audio", extract_audio_node)
     graph.add_node("merge_content", merge_content_node)
     graph.add_node("generate_summary", generate_node)
     graph.add_node("validate_summary", validate_node)
@@ -905,7 +916,8 @@ def build_summary_graph(
 
     graph.add_edge(START, "fetch_lessons")
     graph.add_conditional_edges("fetch_lessons", _error_check("extract_pdfs"))
-    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_edge("extract_pdfs", "extract_audio")
+    graph.add_edge("extract_audio", "merge_content")
     graph.add_conditional_edges("merge_content", _error_check("generate_summary"))
     graph.add_edge("generate_summary", "validate_summary")
     graph.add_conditional_edges("validate_summary", _summary_validation_router)

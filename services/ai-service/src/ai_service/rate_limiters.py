@@ -19,3 +19,9 @@ EMBEDDING_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_EMBEDDINGS
 # Each call ≈ 1,500 tokens → safe max ≈ 20 concurrent calls
 # We use 5 because PDF processing is bursty (many pages per PDF)
 PDF_VISION_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_PDF_VISION", "5")))
+
+# whisper-1: 500 RPM, 25 MB per request
+# We use 10 concurrent calls — safe for bursty transcription workloads
+AUDIO_TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(
+    int(os.getenv("MAX_CONCURRENT_AUDIO_TRANSCRIPTION", "10"))
+)

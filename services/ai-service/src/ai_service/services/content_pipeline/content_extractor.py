@@ -63,18 +63,9 @@ class ContentExtractor:
     def build_combined_text(
         module_data: dict,
         pdf_texts: dict[str, str],
+        audio_texts: dict[str, str] | None = None,  # NEW
     ) -> str:
-        """Combine MongoDB text + PDF-extracted text into a single markdown string.
-
-        Args:
-            module_data: Dict from fetch_module_data() with module_title,
-                         module_description, lessons.
-            pdf_texts:   Dict mapping lesson_id -> extracted PDF text
-                         (produced by the extract_pdfs LangGraph node).
-
-        Returns:
-            Full markdown-formatted text block combining all lesson content.
-        """
+        audio_texts = audio_texts or {}
         sections = [
             f"## Module: {module_data['module_title']}\n{module_data['module_description']}"
         ]
@@ -87,6 +78,8 @@ class ContentExtractor:
             section = f"### Lesson: {lesson_title}\n{text_content}"
             if lesson_id in pdf_texts:
                 section += f"\n\n#### PDF Resources:\n{pdf_texts[lesson_id]}"
+            if lesson_id in audio_texts:  # NEW
+                section += f"\n\n#### Audio Transcripts:\n{audio_texts[lesson_id]}"  # NEW
             sections.append(section)
 
         return "\n\n".join(sections)
@@ -95,16 +88,9 @@ class ContentExtractor:
     def build_lesson_texts(
         lessons: list[dict],
         pdf_texts: dict[str, str],
+        audio_texts: dict[str, str] | None = None,  # NEW
     ) -> dict[str, str]:
-        """Build per-lesson text by merging inline text + PDF text.
-
-        Args:
-            lessons:   List of lesson dicts with lesson_id and text_content.
-            pdf_texts: Dict mapping lesson_id -> extracted PDF text.
-
-        Returns:
-            Dict mapping lesson_id -> combined text for that lesson.
-        """
+        audio_texts = audio_texts or {}
         lesson_texts: dict[str, str] = {}
 
         for lesson in lessons:
@@ -115,6 +101,8 @@ class ContentExtractor:
                 parts.append(text_content)
             if lesson_id in pdf_texts:
                 parts.append(pdf_texts[lesson_id])
+            if lesson_id in audio_texts:  # NEW
+                parts.append(audio_texts[lesson_id])  # NEW
 
             full_text = "\n\n".join(parts)
             if full_text.strip():

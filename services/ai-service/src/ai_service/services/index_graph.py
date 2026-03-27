@@ -20,6 +20,7 @@ from langgraph.graph.state import CompiledStateGraph
 from ai_service.services.content_pipeline.text_chunker import TextChunker
 from ai_service.services.content_pipeline.content_extractor import ContentExtractor
 from ai_service.services.content_pipeline.pdf_processor import build_pdf_extraction_node
+from ai_service.services.content_pipeline.audio_processor import build_audio_extraction_node
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
 
@@ -46,6 +47,7 @@ class IndexState(BaseModel):
     lessons: list[dict] = Field(default_factory=list)
     module_title: str = ""
     pdf_texts: dict[str, str] = Field(default_factory=dict)
+    audio_texts: dict[str, str] = Field(default_factory=dict)  # NEW
     combined_text: str = ""
     lesson_texts: dict[str, str] = Field(default_factory=dict)
 
@@ -97,7 +99,10 @@ def _build_merge_content_node(content_extractor: ContentExtractor):
     """Merge MongoDB text + PDF text into lesson_texts for chunking."""
 
     async def merge_content(state: IndexState) -> dict:
-        lesson_texts = ContentExtractor.build_lesson_texts(state.lessons, state.pdf_texts)
+        audio_texts = state.audio_texts  # NEW - Pydantic attribute access
+        lesson_texts = ContentExtractor.build_lesson_texts(
+            state.lessons, state.pdf_texts, audio_texts  # pass audio_texts
+        )
         if not lesson_texts:
             return {"error": "No content to index after merging"}
         return {"lesson_texts": lesson_texts}
@@ -326,6 +331,7 @@ def build_index_graph(
     cleanup_node = _build_cleanup_node(vector_store)
     fetch_node = _build_fetch_lessons_node(content_extractor)
     extract_pdfs_node = build_pdf_extraction_node(openai_client)
+    extract_audio_node = build_audio_extraction_node(openai_client)
     merge_node = _build_merge_content_node(content_extractor)
     chunk_node = _build_chunk_node(text_chunker)
     embed_node = _build_embed_node(openai_client)
@@ -336,6 +342,7 @@ def build_index_graph(
     graph.add_node("cleanup_vectors", cleanup_node)
     graph.add_node("fetch_lessons", fetch_node)
     graph.add_node("extract_pdfs", extract_pdfs_node)
+    graph.add_node("extract_audio", extract_audio_node)
     graph.add_node("merge_content", merge_node)
     graph.add_node("chunk_texts", chunk_node)
     graph.add_node("embed_chunks", embed_node)
@@ -344,7 +351,8 @@ def build_index_graph(
     graph.add_edge(START, "cleanup_vectors")
     graph.add_conditional_edges("cleanup_vectors", _error_router("fetch_lessons"))
     graph.add_conditional_edges("fetch_lessons", _error_router("extract_pdfs"))
-    graph.add_edge("extract_pdfs", "merge_content")
+    graph.add_edge("extract_pdfs", "extract_audio")
+    graph.add_edge("extract_audio", "merge_content")
     graph.add_conditional_edges("merge_content", _error_router("chunk_texts"))
     graph.add_conditional_edges("chunk_texts", _error_router("embed_chunks"))
     graph.add_conditional_edges("embed_chunks", _error_router("store_vectors"))
