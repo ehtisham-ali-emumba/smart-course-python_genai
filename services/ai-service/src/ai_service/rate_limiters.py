@@ -25,3 +25,7 @@ PDF_VISION_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_PDF_VISIO
 AUDIO_TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(
     int(os.getenv("MAX_CONCURRENT_AUDIO_TRANSCRIPTION", "10"))
 )
+
+# gpt-4o (video frame descriptions): same pool as PDF vision
+# We use 3 because video processing generates many frames per resource
+VIDEO_VISION_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_VIDEO_VISION", "3")))

@@ -26,6 +26,8 @@ dependencies = [
     "langchain-openai>=0.3.0",
     "langgraph>=0.2.0",
     "langchain-core>=0.3.0",
+    "ffmpeg-python>=0.2.0,<0.3.0",
+    "pydub>=0.25.1,<0.26.0",
 ]
 
 [project.optional-dependencies]

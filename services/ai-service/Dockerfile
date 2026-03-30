@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install ffmpeg for video/audio processing
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Install shared library
 COPY shared/pyproject.toml /tmp/shared/pyproject.toml
 COPY shared/src/shared /tmp/shared/src/shared

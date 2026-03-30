@@ -47,7 +47,8 @@ class IndexState(BaseModel):
     lessons: list[dict] = Field(default_factory=list)
     module_title: str = ""
     pdf_texts: dict[str, str] = Field(default_factory=dict)
-    audio_texts: dict[str, str] = Field(default_factory=dict)  # NEW
+    audio_texts: dict[str, str] = Field(default_factory=dict)
+    video_texts: dict[str, str] = Field(default_factory=dict)  # NEW
     combined_text: str = ""
     lesson_texts: dict[str, str] = Field(default_factory=dict)
 
@@ -96,12 +97,13 @@ def _build_fetch_lessons_node(content_extractor: ContentExtractor):
 
 
 def _build_merge_content_node(content_extractor: ContentExtractor):
-    """Merge MongoDB text + PDF text into lesson_texts for chunking."""
+    """Merge MongoDB text + PDF/audio/video text into lesson_texts for chunking."""
 
     async def merge_content(state: IndexState) -> dict:
-        audio_texts = state.audio_texts  # NEW - Pydantic attribute access
+        audio_texts = state.audio_texts
+        video_texts = state.video_texts
         lesson_texts = ContentExtractor.build_lesson_texts(
-            state.lessons, state.pdf_texts, audio_texts  # pass audio_texts
+            state.lessons, state.pdf_texts, audio_texts, video_texts
         )
         if not lesson_texts:
             return {"error": "No content to index after merging"}
@@ -307,6 +309,9 @@ def _error_router(next_node: str):
 # ── Graph Builder ──────────────────────────────────────────────────
 
 
+from ai_service.services.content_pipeline.video_processor import build_video_extraction_node
+
+
 def build_index_graph(
     content_extractor: ContentExtractor,
     text_chunker: TextChunker,
@@ -317,12 +322,12 @@ def build_index_graph(
 
     New flow:
       START -> cleanup_vectors -> fetch_lessons -> extract_pdfs
-            -> merge_content -> chunk_texts -> embed_chunks -> store_vectors -> END
+            -> extract_audio -> extract_video -> merge_content -> chunk_texts -> embed_chunks -> store_vectors -> END
 
     Args:
         content_extractor: Fetches module/lesson data from MongoDB.
         text_chunker: Text splitter for chunking lesson content.
-        openai_client: OpenAI client for batch embeddings and PDF vision.
+        openai_client: OpenAI client for batch embeddings and PDF/vision/video.
         vector_store: Qdrant repository for vector storage.
 
     Returns:
@@ -332,6 +337,7 @@ def build_index_graph(
     fetch_node = _build_fetch_lessons_node(content_extractor)
     extract_pdfs_node = build_pdf_extraction_node(openai_client)
     extract_audio_node = build_audio_extraction_node(openai_client)
+    extract_video_node = build_video_extraction_node()
     merge_node = _build_merge_content_node(content_extractor)
     chunk_node = _build_chunk_node(text_chunker)
     embed_node = _build_embed_node(openai_client)
@@ -343,6 +349,7 @@ def build_index_graph(
     graph.add_node("fetch_lessons", fetch_node)
     graph.add_node("extract_pdfs", extract_pdfs_node)
     graph.add_node("extract_audio", extract_audio_node)
+    graph.add_node("extract_video", extract_video_node)
     graph.add_node("merge_content", merge_node)
     graph.add_node("chunk_texts", chunk_node)
     graph.add_node("embed_chunks", embed_node)
@@ -352,7 +359,8 @@ def build_index_graph(
     graph.add_conditional_edges("cleanup_vectors", _error_router("fetch_lessons"))
     graph.add_conditional_edges("fetch_lessons", _error_router("extract_pdfs"))
     graph.add_edge("extract_pdfs", "extract_audio")
-    graph.add_edge("extract_audio", "merge_content")
+    graph.add_edge("extract_audio", "extract_video")
+    graph.add_edge("extract_video", "merge_content")
     graph.add_conditional_edges("merge_content", _error_router("chunk_texts"))
     graph.add_conditional_edges("chunk_texts", _error_router("embed_chunks"))
     graph.add_conditional_edges("embed_chunks", _error_router("store_vectors"))

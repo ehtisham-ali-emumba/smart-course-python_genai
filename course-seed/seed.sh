@@ -294,6 +294,49 @@ for m in modules:
 }
 
 # ============================================
+# Helper function to create a lesson with video file upload
+# ============================================
+create_video_lesson() {
+  local course_id=$1
+  local module_id=$2
+  local title="$3"
+  local duration=$4
+  local order=$5
+  local video_file=$6
+
+  log_info "  Creating video lesson ${order}: ${title} (video: ${video_file})..."
+
+  local response=$(curl -s -X POST "${BASE_URL}/courses/${course_id}/content/modules/${module_id}/lessons/with-file" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -F "title=${title}" \
+    -F "type=video" \
+    -F "duration_minutes=${duration}" \
+    -F "order=${order}" \
+    -F "is_preview=false" \
+    -F "file=@${CONTENT_DIR}/${video_file};type=video/mp4")
+
+  local lesson_check=$(echo "$response" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+modules = data.get('modules', [])
+for m in modules:
+    if m.get('module_id') == '${module_id}':
+        for l in m.get('lessons', []):
+            if l.get('order') == ${order}:
+                print(l.get('lesson_id', 'unknown'))
+                break
+        break
+" 2>/dev/null)
+
+  if [ -n "$lesson_check" ] && [ "$lesson_check" != "null" ]; then
+    log_success "  Video lesson '${title}' created (ID: ${lesson_check})"
+  else
+    log_error "  Failed to create video lesson '${title}'. Response:"
+    echo "$response" | python3 -m json.tool 2>/dev/null | head -10 || echo "$response" | head -5
+  fi
+}
+
+# ============================================
 # Step 7: Create lessons for Module 1
 # ============================================
 log_step "Creating lessons for Module 1: JavaScript Fundamentals..."
@@ -326,6 +369,11 @@ create_audio_lesson "$COURSE_ID" "$MODULE1_ID" \
   "TypeScript Fundamentals - Audio Overview" \
   15 5 \
   "typescript-lesson.mp3"
+
+create_video_lesson "$COURSE_ID" "$MODULE1_ID" \
+  "TypeScript Utility Types - Video Deep Dive" \
+  20 6 \
+  "video-lesson-on-typescript-utility-types.mp4"
 
 # ============================================
 # Step 8: Create lessons for Module 2

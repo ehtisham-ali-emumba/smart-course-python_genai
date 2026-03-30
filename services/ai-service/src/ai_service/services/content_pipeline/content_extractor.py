@@ -63,9 +63,11 @@ class ContentExtractor:
     def build_combined_text(
         module_data: dict,
         pdf_texts: dict[str, str],
-        audio_texts: dict[str, str] | None = None,  # NEW
+        audio_texts: dict[str, str] | None = None,
+        video_texts: dict[str, str] | None = None,
     ) -> str:
         audio_texts = audio_texts or {}
+        video_texts = video_texts or {}
         sections = [
             f"## Module: {module_data['module_title']}\n{module_data['module_description']}"
         ]
@@ -78,8 +80,10 @@ class ContentExtractor:
             section = f"### Lesson: {lesson_title}\n{text_content}"
             if lesson_id in pdf_texts:
                 section += f"\n\n#### PDF Resources:\n{pdf_texts[lesson_id]}"
-            if lesson_id in audio_texts:  # NEW
-                section += f"\n\n#### Audio Transcripts:\n{audio_texts[lesson_id]}"  # NEW
+            if lesson_id in audio_texts:
+                section += f"\n\n#### Audio Transcripts:\n{audio_texts[lesson_id]}"
+            if lesson_id in video_texts:
+                section += f"\n\n#### Video Content:\n{video_texts[lesson_id]}"
             sections.append(section)
 
         return "\n\n".join(sections)
@@ -88,9 +92,11 @@ class ContentExtractor:
     def build_lesson_texts(
         lessons: list[dict],
         pdf_texts: dict[str, str],
-        audio_texts: dict[str, str] | None = None,  # NEW
+        audio_texts: dict[str, str] | None = None,
+        video_texts: dict[str, str] | None = None,
     ) -> dict[str, str]:
         audio_texts = audio_texts or {}
+        video_texts = video_texts or {}
         lesson_texts: dict[str, str] = {}
 
         for lesson in lessons:
@@ -101,8 +107,10 @@ class ContentExtractor:
                 parts.append(text_content)
             if lesson_id in pdf_texts:
                 parts.append(pdf_texts[lesson_id])
-            if lesson_id in audio_texts:  # NEW
-                parts.append(audio_texts[lesson_id])  # NEW
+            if lesson_id in audio_texts:
+                parts.append(audio_texts[lesson_id])
+            if lesson_id in video_texts:
+                parts.append(video_texts[lesson_id])
 
             full_text = "\n\n".join(parts)
             if full_text.strip():

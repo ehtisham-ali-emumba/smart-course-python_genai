@@ -63,6 +63,7 @@ class QuizState(TypedDict):
     lessons: list[dict]  # raw lesson data from MongoDB
     pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
     audio_texts: dict[str, str]  # lesson_id -> audio transcript from extract_audio node
+    video_texts: dict[str, str]  # lesson_id -> video text from extract_video node
     combined_text: str
     generated_quiz: GeneratedQuiz | None
     validation_passed: bool
@@ -101,6 +102,7 @@ class SummaryState(TypedDict):
     lessons: list[dict]  # raw lesson data from MongoDB
     pdf_texts: dict[str, str]  # lesson_id -> PDF text from extract_pdfs node
     audio_texts: dict[str, str]  # lesson_id -> audio transcript from extract_audio node
+    video_texts: dict[str, str]  # lesson_id -> video text from extract_video node
     combined_text: str
     generated_summary: GeneratedSummary | None
     validation_passed: bool
@@ -152,10 +154,10 @@ def _build_fetch_lessons_node(content_extractor: ContentExtractor):
 
 
 def _build_merge_content_node(content_extractor: ContentExtractor):
-    """Merge MongoDB lesson text + PDF-extracted text into combined_text.
+    """Merge MongoDB lesson text + PDF/audio/video-extracted text into combined_text.
 
-    Expects fetch_lessons and extract_pdfs to have already run,
-    so `lessons`, `pdf_texts`, `module_title`, and `module_description` are populated in state.
+    Expects fetch_lessons, extract_pdfs, extract_audio, extract_video to have already run,
+    so `lessons`, `pdf_texts`, `audio_texts`, `video_texts`, `module_title`, and `module_description` are populated in state.
     No refetch of module data required - all needed data is already in state.
     """
 
@@ -167,9 +169,10 @@ def _build_merge_content_node(content_extractor: ContentExtractor):
         lessons = state.get("lessons", [])
         pdf_texts = state.get("pdf_texts", {})
         audio_texts = state.get("audio_texts", {})
+        video_texts = state.get("video_texts", {})
 
         log = logger.bind(course_id=course_id, module_id=module_id)
-        log.info("[MERGE_CONTENT] Merging lesson text with PDF and audio text")
+        log.info("[MERGE_CONTENT] Merging lesson text with PDF, audio, and video text")
 
         try:
             if not lessons:
@@ -183,7 +186,7 @@ def _build_merge_content_node(content_extractor: ContentExtractor):
             }
 
             combined_text = ContentExtractor.build_combined_text(
-                module_data, pdf_texts, audio_texts
+                module_data, pdf_texts, audio_texts, video_texts
             )
 
             if not combined_text.strip():
