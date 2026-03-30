@@ -22,6 +22,7 @@ Usage:
 """
 
 import asyncio
+from urllib.parse import urlparse
 import mimetypes
 import uuid
 from dataclasses import dataclass
@@ -208,6 +209,27 @@ class S3Uploader:
             logger.error("s3_delete_failed", key=key, error=str(exc))
             raise RuntimeError(f"S3 delete failed for key '{key}': {exc}") from exc
 
+    async def download_file(self, key: str) -> bytes:
+        """
+        Download an object from S3 by its key.
+
+        Args:
+            key: S3 object key, e.g. "course-content/abc123.mp3"
+
+        Returns:
+            Raw bytes of the downloaded object.
+
+        Raises:
+            RuntimeError: S3 download failures.
+        """
+        try:
+            data = await asyncio.to_thread(self._sync_download, key=key)
+            logger.info("s3_download_success", key=key, size_bytes=len(data))
+            return data
+        except (BotoCoreError, ClientError) as exc:
+            logger.error("s3_download_failed", key=key, error=str(exc))
+            raise RuntimeError(f"S3 download failed for key '{key}': {exc}") from exc
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _sync_upload(self, *, content: bytes, key: str, content_type: str) -> None:
@@ -221,6 +243,19 @@ class S3Uploader:
             )
         except (BotoCoreError, ClientError) as exc:
             raise RuntimeError(f"S3 upload failed: {exc}") from exc
+
+    def _sync_download(self, *, key: str) -> bytes:
+        """Blocking S3 get_object — always call inside asyncio.to_thread."""
+        resp = self._client.get_object(Bucket=self._bucket, Key=key)
+        return resp["Body"].read()
+
+    @staticmethod
+    def key_from_url(url: str) -> str:
+        """Extract S3 object key from a virtual-hosted S3 URL.
+
+        https://{bucket}.s3.{region}.amazonaws.com/{key}  →  {key}
+        """
+        return urlparse(url).path.lstrip("/")
 
     @staticmethod
     def _detect_mime(file: UploadFile, content: bytes) -> str:

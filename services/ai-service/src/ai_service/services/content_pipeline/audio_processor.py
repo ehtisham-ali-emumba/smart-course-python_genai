@@ -12,14 +12,12 @@ Concurrency is controlled via AUDIO_TRANSCRIPTION_SEMAPHORE.
 import asyncio
 import tempfile
 from pathlib import Path
-from urllib.parse import urlparse
-
-import boto3
 import structlog
 from openai import AsyncOpenAI
 
 from ai_service.config import settings
 from ai_service.rate_limiters import AUDIO_TRANSCRIPTION_SEMAPHORE
+from shared.storage.s3 import S3Uploader
 
 logger = structlog.get_logger(__name__)
 
@@ -55,30 +53,21 @@ def _is_audio_resource(resource: dict) -> bool:
     return Path(url.split("?")[0]).suffix.lower() in AUDIO_EXTENSIONS
 
 
-def _s3_key_from_url(url: str) -> str:
-    """Extract S3 key from a virtual-hosted S3 URL.
-
-    https://{bucket}.s3.{region}.amazonaws.com/{key}  →  {key}
-    """
-    return urlparse(url).path.lstrip("/")
+def _get_s3_uploader() -> S3Uploader:
+    return S3Uploader(
+        bucket=settings.S3_BUCKET_NAME,
+        region=settings.AWS_REGION,
+        access_key=settings.AWS_ACCESS_KEY_ID,
+        secret_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
 
 
 async def _download_audio(url: str, name: str) -> bytes | None:
-    """Download private S3 audio file using boto3. Returns bytes or None on failure."""
+    """Download private S3 audio file. Returns bytes or None on failure."""
     try:
-        key = _s3_key_from_url(url)
-        s3 = boto3.client(
-            "s3",
-            region_name=settings.AWS_REGION,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        )
-
-        def _sync_get() -> bytes:
-            resp = s3.get_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
-            return resp["Body"].read()
-
-        content = await asyncio.to_thread(_sync_get)
+        key = S3Uploader.key_from_url(url)
+        uploader = _get_s3_uploader()
+        content = await uploader.download_file(key)
 
         if len(content) > MAX_FILE_SIZE_BYTES:
             logger.warning(
