@@ -2,7 +2,9 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from notification_service.api.router import router
 from notification_service.core.logging import get_logger, setup_logging
@@ -53,6 +55,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Expose Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 # Include routers
 app.include_router(router)
 

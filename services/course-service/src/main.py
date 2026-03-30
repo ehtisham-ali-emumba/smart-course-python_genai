@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.router import router
 from api.uploads import router as uploads_router
@@ -72,6 +74,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Expose Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 # Include routers
 app.include_router(router)
 

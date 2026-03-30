@@ -1,7 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from shared.kafka.producer import EventProducer
 from user_service.api.router import router
@@ -46,6 +48,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Expose Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 # Include routers
 app.include_router(router)
 

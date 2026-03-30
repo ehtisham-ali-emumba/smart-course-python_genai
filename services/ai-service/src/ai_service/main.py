@@ -3,7 +3,9 @@
 import logging
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from ai_service.api.router import router
 from ai_service.config import settings
@@ -76,6 +78,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 app.include_router(router)
 
 

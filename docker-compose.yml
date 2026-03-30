@@ -388,6 +388,52 @@ services:
       - smartcourse-network
 
   # ═══════════════════════════════════════════════════════════════
+  #  MONITORING — Prometheus + Grafana
+  # ═══════════════════════════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: smartcourse-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartcourse-network
+
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: smartcourse-grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: smartcourse
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartcourse-network
+
+  # ═══════════════════════════════════════════════════════════════
   #  AUTH SIDECAR — JWT verification (Python/FastAPI)
   # ═══════════════════════════════════════════════════════════════
   auth-sidecar:
@@ -442,3 +488,5 @@ volumes:
   mongodb_data:
   rabbitmq_data:
   qdrant_data:
+  prometheus_data:    # ADD THIS
+  grafana_data:       # ADD THIS

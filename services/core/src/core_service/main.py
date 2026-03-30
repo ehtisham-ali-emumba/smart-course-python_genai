@@ -4,7 +4,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from core_service.config import core_settings
 from core_service.temporal.common.temporal_client import close_temporal_client
@@ -63,6 +65,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+# Expose Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health")
