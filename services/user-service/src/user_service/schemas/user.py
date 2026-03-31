@@ -77,3 +77,20 @@ class StudentProfileResponse(BaseModel):
         from_attributes=True,
         ser_json_timedelta="iso8601",
     )
+
+
+class ProfileResponse(UserResponse):
+    """Extended profile - base user fields + optional role-specific data."""
+
+    student_profile: Optional[StudentProfileResponse] = None
+    instructor_profile: Optional[InstructorProfileResponse] = None
+
+
+class AvatarUploadResponse(BaseModel):
+    """Response after successful avatar upload."""
+
+    profile_picture_url: str
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )

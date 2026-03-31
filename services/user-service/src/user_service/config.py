@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str
     SCHEMA_REGISTRY_URL: str
 
+    # S3 File Upload
+    AWS_ACCESS_KEY_ID: str
+    AWS_SECRET_ACCESS_KEY: str
+    AWS_REGION: str
+    S3_BUCKET_NAME: str
+    S3_AVATAR_MAX_SIZE_MB: float = 5.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,
