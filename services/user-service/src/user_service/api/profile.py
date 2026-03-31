@@ -82,7 +82,7 @@ async def update_profile(
             Topics.USER,
             "user.profile_updated",
             UserProfileUpdatedPayload(
-                user_id=str(user_uuid),
+                user_id=user_uuid,
                 fields_changed=fields_changed,
             ).model_dump(),
             key=str(user_uuid),
