@@ -35,7 +35,6 @@ class EnrollmentResponse(BaseModel):
     payment_status: Optional[str]
     payment_amount: Optional[Decimal]
     enrollment_source: Optional[str]
-    time_spent_minutes: int
     created_at: datetime
     updated_at: datetime
 

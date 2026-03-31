@@ -19,7 +19,6 @@ class InstructorProfile(Base):
     )
 
     bio: Mapped[str | None] = mapped_column(Text, default=None)
-    expertise: Mapped[str | None] = mapped_column(String(500), default=None)
     profile_picture_url: Mapped[str | None] = mapped_column(String(500), default=None)
     phone_number: Mapped[str | None] = mapped_column(String(20), default=None)
 

@@ -39,7 +39,6 @@ class InstructorProfileResponse(BaseModel):
     id: UUID
     user_id: UUID
     bio: Optional[str]
-    expertise: Optional[str]
     profile_picture_url: Optional[str]
     phone_number: Optional[str]
     total_students: int
@@ -59,7 +58,6 @@ class InstructorProfileUpdate(BaseModel):
     """Instructor profile update schema."""
 
     bio: Optional[str] = None
-    expertise: Optional[str] = None
     profile_picture_url: Optional[str] = None
     phone_number: Optional[str] = Field(None, min_length=10, max_length=20)
 
@@ -68,7 +66,6 @@ class StudentProfileResponse(BaseModel):
     id: UUID
     user_id: UUID
     bio: Optional[str]
-    interests: Optional[str]
     education_level: Optional[str]
     profile_picture_url: Optional[str]
     total_enrollments: int

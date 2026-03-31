@@ -26,8 +26,6 @@ class Enrollment(Base):
     payment_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), default=None)
     enrollment_source: Mapped[str | None] = mapped_column(String(100), default=None)
 
-    time_spent_minutes: Mapped[int] = mapped_column(default=0)
-
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

@@ -17,7 +17,6 @@ class StudentProfile(Base):
     )
 
     bio: Mapped[str | None] = mapped_column(Text, default=None)
-    interests: Mapped[str | None] = mapped_column(String(500), default=None)
     education_level: Mapped[str | None] = mapped_column(String(100), default=None)
     profile_picture_url: Mapped[str | None] = mapped_column(String(500), default=None)
 
