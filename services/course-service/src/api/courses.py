@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from api.dependencies import (
     require_instructor,
 )
 from core.database import get_db
+from core.s3 import get_s3_uploader
+from shared.storage.s3 import S3Uploader
 from shared.schemas.events.course import (
     CourseArchivedPayload,
     CourseCreatedPayload,
@@ -168,6 +170,76 @@ async def update_course(
         return CourseResponse(**course)
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.post("/{course_id}/upload-thumbnail", response_model=CourseResponse)
+async def upload_course_thumbnail(
+    course_id: _uuid.UUID,
+    file: UploadFile = File(..., description="Thumbnail image file"),
+    instructor_id: _uuid.UUID = Depends(require_instructor),
+    db: AsyncSession = Depends(get_db),
+    uploader: S3Uploader = Depends(get_s3_uploader),
+):
+    """
+    Upload and set thumbnail for an existing course.
+
+    - Takes course_id in URL path
+    - Takes image file as multipart form data
+    - Uploads to S3 (folder: course-thumbnails)
+    - If old thumbnail exists, deletes it from S3
+    - Updates course.thumbnail_url in database
+    - Returns updated course with new thumbnail_url
+
+    Allowed image types: jpeg, png, gif, webp, svg (max 5 MB)
+    Only the course owner (instructor) can upload thumbnail.
+    """
+    service = CourseService(db)
+
+    # 1. Validate course exists and belongs to instructor
+    course = await service.get_instructor_course(course_id, instructor_id)
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found or you do not own it"
+        )
+
+    # 2. Upload new thumbnail to S3
+    try:
+        result = await uploader.upload_file(
+            file=file,
+            folder="course-thumbnails",
+            allowed_category="image",
+            max_size_mb=5,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    # 3. Delete old thumbnail from S3 if it exists
+    old_thumbnail_url = course.get("thumbnail_url")
+    if old_thumbnail_url:
+        try:
+            old_key = S3Uploader.key_from_url(old_thumbnail_url)
+            await uploader.delete_file(old_key)
+            logger.info(f"Deleted old thumbnail: {old_key}")
+        except Exception as e:
+            # Log but don't fail the update - new thumbnail is more important
+            logger.warning(f"Failed to delete old thumbnail {old_thumbnail_url}: {e}")
+
+    # 4. Update course with new thumbnail URL
+    updated_course = await service.update_course(
+        course_id,
+        CourseUpdate.model_construct(thumbnail_url=result.url),
+        instructor_id
+    )
+    if not updated_course:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update course thumbnail"
+        )
+
+    return CourseResponse(**updated_course)
 
 
 @router.patch("/{course_id}/status", status_code=status.HTTP_202_ACCEPTED)
