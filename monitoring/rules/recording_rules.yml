@@ -1,0 +1,30 @@
+groups:
+  - name: smartcourse_recording_rules
+    interval: 30s
+    rules:
+      - record: service:http_requests:rate5m
+        expr: sum(rate(http_requests_total[5m])) by (handler, method, job)
+
+      - record: service:http_request_duration_seconds:p50
+        expr: histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: service:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: service:http_request_duration_seconds:p99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: service:http_errors:rate5m
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (handler)
+
+      - record: redis:cache_hit_ratio
+        expr: redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+
+      - record: kafka:consumer_lag:total
+        expr: sum(kafka_consumergroup_lag) by (consumergroup, topic)
+
+      - record: container:cpu_usage:rate5m
+        expr: sum(rate(container_cpu_usage_seconds_total{name=~"smartcourse-.*"}[5m])) by (name)
+
+      - record: container:memory_usage_ratio
+        expr: container_memory_usage_bytes{name=~"smartcourse-.*"} / container_spec_memory_limit_bytes{name=~"smartcourse-.*"} > 0

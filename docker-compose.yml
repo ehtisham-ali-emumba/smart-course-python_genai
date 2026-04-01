@@ -190,6 +190,7 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -396,6 +397,7 @@ services:
     container_name: smartcourse-prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -430,6 +432,112 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - smartcourse-network
+
+  # ═══════════════════════════════════════════════════════════════
+  #  OBSERVABILITY — Exporters & Alerting
+  # ═══════════════════════════════════════════════════════════════
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: smartcourse-cadvisor
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8085:8080"
+    networks:
+      - smartcourse-network
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: smartcourse-node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    ports:
+      - "9100:9100"
+    networks:
+      - smartcourse-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: smartcourse-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: smartcourse-redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40.0
+    container_name: smartcourse-mongodb-exporter
+    command:
+      - "--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/admin"
+      - "--collect-all"
+      - "--compatible-mode"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: smartcourse-kafka-exporter
+    command:
+      - "--kafka.server=kafka:29092"
+      - "--topic.filter=.*"
+      - "--group.filter=.*"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - smartcourse-network
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.1
+    container_name: smartcourse-nginx-exporter
+    command:
+      - "-nginx.scrape-uri=http://api-gateway:8000/stub_status"
+    depends_on:
+      - api-gateway
+    networks:
+      - smartcourse-network
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: smartcourse-alertmanager
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     networks:
       - smartcourse-network
 

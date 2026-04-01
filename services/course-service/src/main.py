@@ -75,7 +75,16 @@ app = FastAPI(
 )
 
 # Expose Prometheus metrics
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_respect_env_var=False,
+    excluded_handlers=["/health", "/metrics"],
+    should_instrument_requests_inprogress=True,
+    inprogress_name="smartcourse_inprogress_requests",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
 # Include routers
 app.include_router(router)
 

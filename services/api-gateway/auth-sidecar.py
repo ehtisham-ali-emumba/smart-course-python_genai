@@ -11,6 +11,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # --- Config (was config.py) ---
 JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
@@ -18,6 +19,15 @@ JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 
 # --- App ---
 app = FastAPI(title="Auth Sidecar", docs_url=None, redoc_url=None)
+
+Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/health", "/metrics"],
+    should_instrument_requests_inprogress=True,
+    inprogress_name="smartcourse_auth_inprogress_requests",
+    inprogress_labels=True,
+).instrument(app).expose(app, endpoint="/metrics")
 
 
 def _auth_error(message: str) -> JSONResponse:

@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: 'SmartCourse'
+    orgId: 1
+    folder: 'SmartCourse'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false
