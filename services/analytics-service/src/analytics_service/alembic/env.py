@@ -11,7 +11,6 @@ from analytics_service.models import (  # noqa: F401
     CourseMetrics,
     EnrollmentDaily,
     InstructorMetrics,
-    PlatformSnapshot,
     ProcessedEvent,
     StudentMetrics,
 )

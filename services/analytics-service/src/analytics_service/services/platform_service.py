@@ -1,39 +1,61 @@
 from datetime import date
+from decimal import Decimal
 
+from sqlalchemy import func, select
+
+from analytics_service.models.course_metrics import CourseMetrics
+from analytics_service.models.instructor_metrics import InstructorMetrics
+from analytics_service.models.student_metrics import StudentMetrics
 from analytics_service.repositories.ai_usage_repo import AIUsageDailyRepository
 from analytics_service.repositories.enrollment_daily_repo import EnrollmentDailyRepository
-from analytics_service.repositories.platform_repo import PlatformRepository
 
 
 class PlatformAnalyticsService:
     def __init__(self, session):
-        self.platform_repo = PlatformRepository(session)
+        self.session = session
         self.enrollment_daily_repo = EnrollmentDailyRepository(session)
         self.ai_usage_repo = AIUsageDailyRepository(session)
 
     async def overview(self) -> dict:
-        snapshot = await self.platform_repo.get_latest_snapshot()
-        if not snapshot:
-            return {
-                "total_students": 0,
-                "total_instructors": 0,
-                "total_courses_published": 0,
-                "total_enrollments": 0,
-                "total_completions": 0,
-                "avg_completion_rate": 0,
-                "avg_courses_per_student": 0,
-                "total_certificates_issued": 0,
-            }
+        total_students = await self.session.scalar(
+            select(func.count()).select_from(StudentMetrics)
+        ) or 0
+        total_instructors = await self.session.scalar(
+            select(func.count()).select_from(InstructorMetrics)
+        ) or 0
+        total_courses_published = await self.session.scalar(
+            select(func.count())
+            .select_from(CourseMetrics)
+            .where(CourseMetrics.published_at.is_not(None))
+        ) or 0
+        total_enrollments = await self.session.scalar(
+            select(func.coalesce(func.sum(CourseMetrics.total_enrollments), 0))
+        ) or 0
+        total_completions = await self.session.scalar(
+            select(func.coalesce(func.sum(CourseMetrics.completed_enrollments), 0))
+        ) or 0
+
+        avg_completion_rate = Decimal("0.00")
+        if total_enrollments > 0:
+            avg_completion_rate = Decimal(total_completions * 100 / total_enrollments).quantize(
+                Decimal("0.01")
+            )
+
+        avg_courses_per_student = Decimal("0.00")
+        if total_students > 0:
+            avg_courses_per_student = Decimal(total_courses_published / total_students).quantize(
+                Decimal("0.01")
+            )
 
         return {
-            "total_students": snapshot.total_students,
-            "total_instructors": snapshot.total_instructors,
-            "total_courses_published": snapshot.total_courses_published,
-            "total_enrollments": snapshot.total_enrollments,
-            "total_completions": snapshot.total_completions,
-            "avg_completion_rate": snapshot.avg_completion_rate,
-            "avg_courses_per_student": snapshot.avg_courses_per_student,
-            "total_certificates_issued": snapshot.total_certificates_issued,
+            "total_students": total_students,
+            "total_instructors": total_instructors,
+            "total_courses_published": total_courses_published,
+            "total_enrollments": total_enrollments,
+            "total_completions": total_completions,
+            "avg_completion_rate": avg_completion_rate,
+            "avg_courses_per_student": avg_courses_per_student,
+            "total_certificates_issued": 0,
         }
 
     async def trends(self, date_from: date, date_to: date) -> list[dict]:

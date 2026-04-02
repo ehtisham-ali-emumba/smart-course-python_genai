@@ -1,6 +1,4 @@
-import asyncio
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -15,27 +13,9 @@ from analytics_service.models import (  # noqa: F401
     CourseMetrics,
     EnrollmentDaily,
     InstructorMetrics,
-    PlatformSnapshot,
     ProcessedEvent,
     StudentMetrics,
 )
-from analytics_service.services.snapshot_service import SnapshotService
-
-
-async def daily_snapshot_loop(stop_event: asyncio.Event) -> None:
-    while not stop_event.is_set():
-        now = datetime.now(timezone.utc)
-        next_run = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
-        sleep_seconds = max((next_run - now).total_seconds(), 60)
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=sleep_seconds)
-            break
-        except TimeoutError:
-            pass
-
-        async with AsyncSessionLocal() as session:
-            service = SnapshotService(session)
-            await service.build_daily_snapshot(date.today())
 
 
 @asynccontextmanager
@@ -46,15 +26,8 @@ async def lifespan(app: FastAPI):
     await consumer_manager.start()
     app.state.consumer_manager = consumer_manager
 
-    stop_event = asyncio.Event()
-    snapshot_task = asyncio.create_task(daily_snapshot_loop(stop_event))
-    app.state.snapshot_stop_event = stop_event
-    app.state.snapshot_task = snapshot_task
-
     yield
 
-    stop_event.set()
-    snapshot_task.cancel()
     await consumer_manager.stop()
     await close_redis()
     await engine.dispose()
