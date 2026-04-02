@@ -8,6 +8,7 @@ import logging
 
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.clients.course_service_client import CourseServiceClient
+from ai_service.core.kafka import get_producer
 from ai_service.core.mongodb import get_mongodb
 from ai_service.core.redis import get_redis
 from ai_service.repositories.course_content import CourseContentRepository
@@ -41,7 +42,7 @@ def create_tutor_service(
     vector_store: VectorStoreRepository,
 ) -> TutorService:
     logger.info("Creating TutorService")
-    return TutorService(openai_client=openai_client, vector_store=vector_store)
+    return TutorService(openai_client=openai_client, vector_store=vector_store, producer=get_producer())
 
 
 def create_index_service(
@@ -74,4 +75,5 @@ def create_instructor_service(
         course_client=course_client,
         content_extractor=content_extractor,
         status_tracker=status_tracker,
+        producer=get_producer(),
     )

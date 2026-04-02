@@ -12,6 +12,8 @@ from langchain_core.messages import AIMessageChunk
 from ai_service.clients.openai_client import OpenAIClient
 from ai_service.repositories.vector_store import VectorStoreRepository
 from ai_service.services.tutor_agent import build_tutor_graph, TutorState
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
 from ai_service.schemas.tutor import (
     CreateSessionRequest,
     SessionResponse,
@@ -34,9 +36,11 @@ class TutorService:
         self,
         openai_client: OpenAIClient,
         vector_store: VectorStoreRepository,
+        producer: EventProducer,
     ):
         self.openai_client = openai_client
         self.vector_store = vector_store
+        self.producer = producer
 
         # In-memory session store (MVP — no persistence)
         # Structure: {session_id: {course_id, module_id, lesson_id, student_id, history}}
@@ -155,6 +159,13 @@ class TutorService:
             sources=sources,
         )
 
+        await self.producer.publish(
+            topic=Topics.AI,
+            event_type="ai.question.asked",
+            payload={"course_id": str(session["course_id"]), "student_id": str(user_id)},
+            key=str(session["course_id"]),
+        )
+
         return SendMessageResponse(
             user_message=user_message,
             assistant_message=assistant_message,
@@ -224,6 +235,13 @@ class TutorService:
 
         if len(session["history"]) > MAX_HISTORY_PER_SESSION:
             session["history"] = session["history"][-MAX_HISTORY_PER_SESSION:]
+
+        await self.producer.publish(
+            topic=Topics.AI,
+            event_type="ai.question.asked",
+            payload={"course_id": str(session["course_id"]), "student_id": str(user_id)},
+            key=str(session["course_id"]),
+        )
 
         message_id = uuid4().hex
         yield f"data: {json.dumps({'event': 'done', 'message_id': message_id})}\n\n"

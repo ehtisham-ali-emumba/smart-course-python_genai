@@ -19,6 +19,7 @@ from ai_service.core.service_factory import (
     create_instructor_service,
 )
 from ai_service.api.dependencies import set_index_service, set_tutor_service, set_instructor_service
+from ai_service.core.kafka import connect_kafka, close_kafka
 from ai_service.patches import pymupdf_images
 
 pymupdf_images.apply()
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI):
 
     await connect_mongodb(settings.MONGODB_URL, settings.MONGODB_DB_NAME)
     await connect_redis(settings.REDIS_URL)
+    await connect_kafka(settings.KAFKA_BOOTSTRAP_SERVERS, settings.SCHEMA_REGISTRY_URL)
 
     # Initialize Qdrant vector store
     _vector_store = VectorStoreRepository()
@@ -67,6 +69,7 @@ async def lifespan(app: FastAPI):
     logger.info("AI Service shutting down")
     if _vector_store:
         await _vector_store.close()
+    await close_kafka()
     await close_redis()
     await close_mongodb()
 

@@ -22,6 +22,8 @@ from ai_service.schemas.instructor import (
 )
 from ai_service.schemas.common import GenerationStatus
 from ai_service.services.generation_status import GenerationStatusTracker
+from shared.kafka.producer import EventProducer
+from shared.kafka.topics import Topics
 
 logger = structlog.get_logger(__name__)
 
@@ -36,6 +38,7 @@ class InstructorService:
         course_client: CourseServiceClient,
         content_extractor: ContentExtractor,
         status_tracker: GenerationStatusTracker,
+        producer: EventProducer,
     ):
         """Initialize instructor service with dependencies.
 
@@ -51,6 +54,7 @@ class InstructorService:
         self.course_client = course_client
         self.content_extractor = content_extractor
         self.status_tracker = status_tracker
+        self.producer = producer
 
         # Build graphs once at init — compiled graphs are stateless and reusable
         self._summary_graph = build_summary_graph(openai_client, course_client, content_extractor)
@@ -203,6 +207,12 @@ class InstructorService:
             # Check result: if persisted, mark completed; otherwise mark failed
             if result.get("persisted"):
                 await self.status_tracker.set_completed(course_id, module_id, "summary")
+                await self.producer.publish(
+                    topic=Topics.AI,
+                    event_type="ai.content.generated",
+                    payload={"course_id": str(course_id), "instructor_id": str(profile_id)},
+                    key=str(course_id),
+                )
                 logger.info(
                     "Summary generation graph completed successfully",
                     course_id=course_id,
@@ -323,6 +333,12 @@ class InstructorService:
             # Check result: if persisted, mark completed; otherwise mark failed
             if result.get("persisted"):
                 await self.status_tracker.set_completed(course_id, module_id, "quiz")
+                await self.producer.publish(
+                    topic=Topics.AI,
+                    event_type="ai.content.generated",
+                    payload={"course_id": str(course_id), "instructor_id": str(profile_id)},
+                    key=str(course_id),
+                )
                 logger.info(
                     "Quiz generation graph completed successfully",
                     course_id=course_id,

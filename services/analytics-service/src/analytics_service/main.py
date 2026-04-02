@@ -8,14 +8,6 @@ from analytics_service.config import settings
 from analytics_service.consumers.consumer_manager import ConsumerManager
 from analytics_service.core.database import AsyncSessionLocal, engine
 from analytics_service.core.redis import close_redis, connect_redis, get_redis
-from analytics_service.models import (  # noqa: F401
-    AIUsageDaily,
-    CourseMetrics,
-    EnrollmentDaily,
-    InstructorMetrics,
-    ProcessedEvent,
-    StudentMetrics,
-)
 
 
 @asynccontextmanager
