@@ -10,12 +10,16 @@ import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from gateway_health import build_gateway_health_report
 from jose import JWTError, jwt
 from prometheus_fastapi_instrumentator import Instrumentator
 
 # --- Config (was config.py) ---
 JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
+HEALTHCHECK_TIMEOUT_SECONDS = float(
+    os.environ.get("HEALTHCHECK_TIMEOUT_SECONDS", "2.0")
+)
 
 # --- App ---
 app = FastAPI(title="Auth Sidecar", docs_url=None, redoc_url=None)
@@ -73,4 +77,4 @@ async def verify_token(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "auth-sidecar"}
+    return await build_gateway_health_report(HEALTHCHECK_TIMEOUT_SECONDS)

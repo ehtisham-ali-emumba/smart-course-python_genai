@@ -48,7 +48,7 @@ async def register(
             Topics.USER,
             "user.registered",
             UserRegisteredPayload(
-                user_id=str(user.id),
+                user_id=user.id,
                 email=user.email,
                 first_name=user.first_name,
                 last_name=user.last_name,
@@ -92,7 +92,7 @@ async def login(
     await producer.publish(
         Topics.USER,
         "user.login",
-        UserLoginPayload(user_id=str(user.id), email=user.email).model_dump(),
+        UserLoginPayload(user_id=user.id, email=user.email).model_dump(),
         key=str(user.id),
     )
 

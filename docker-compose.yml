@@ -18,6 +18,23 @@ services:
     networks:
       - smartcourse-network
 
+  postgres-init-analytics:
+    image: postgres:15-alpine
+    container_name: smartcourse-postgres-init-analytics
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        psql -h postgres -U ${POSTGRES_USER} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='analytics_db'" |
+        grep -q 1 || psql -h postgres -U ${POSTGRES_USER} -d postgres -c "CREATE DATABASE analytics_db"
+    restart: "no"
+    networks:
+      - smartcourse-network
+
   redis:
     image: redis:7-alpine
     container_name: smartcourse-redis
@@ -169,6 +186,7 @@ services:
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic course.events --partitions 3 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic enrollment.events --partitions 3 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic progress.events --partitions 3 --replication-factor 1 &&
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic certificate.events --partitions 3 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification.events --partitions 1 --replication-factor 1 &&
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic ai.events --partitions 3 --replication-factor 1 &&
         echo 'All Kafka topics created.'
@@ -337,6 +355,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - smartcourse-network
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: smartcourse-analytics-service
+    restart: on-failure
+    volumes:
+      - ./services/analytics-service/src:/app/src:ro
+    env_file:
+      - ./.env
+      - ./services/analytics-service/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init-analytics:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - smartcourse-network
 
@@ -577,6 +622,7 @@ services:
       - course-service
       - notification-service
       - core-service
+      - analytics-service
       - ai-service
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]

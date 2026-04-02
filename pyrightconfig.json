@@ -7,6 +7,7 @@
     "shared/src",
     "services/user-service/src",
     "services/course-service/src",
+    "services/analytics-service/src",
     "services/notification-service/src",
     "services/core/src"
   ],
