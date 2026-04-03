@@ -1,8 +1,10 @@
 import uuid as _uuid
 
+import redis.asyncio
 from fastapi import HTTPException, Request, status
 from temporalio.client import Client as TemporalClient
 
+from core.redis import get_redis
 from shared.kafka.producer import EventProducer
 
 
@@ -62,3 +64,13 @@ def get_authenticated_user(request: Request) -> tuple[_uuid.UUID, str, _uuid.UUI
     role = get_current_user_role(request)
     profile_id = get_current_profile_id(request)
     return user_id, role, profile_id
+
+
+def get_redis_client() -> redis.asyncio.Redis | None:
+    """
+    Get Redis client instance for dependency injection.
+
+    Returns None if Redis is not connected (graceful degradation).
+    The dependency allows routes to safely handle Redis unavailability.
+    """
+    return get_redis()

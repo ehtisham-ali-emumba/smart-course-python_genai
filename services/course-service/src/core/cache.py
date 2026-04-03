@@ -31,7 +31,9 @@ async def cache_get(key: str) -> Optional[Any]:
         data = await client.get(key)
         if data is not None:
             value = json.loads(data)
-            logger.info("cache_hit", key=key, cached_value=value)  # TEST: log full Redis store on hit
+            logger.info(
+                "cache_hit", key=key, cached_value=value
+            )  # TEST: log full Redis store on hit
             return value
         logger.debug("cache_miss", key=key)
         return None
@@ -130,3 +132,33 @@ async def cache_exists(key: str) -> bool:
     except Exception as e:
         logger.warning("cache_exists_error", key=key, error=str(e))
         return False
+
+
+async def cache_set_nx(key: str, value: Any, ttl: int = 300) -> bool:
+    """
+    Atomically set a key only if it does not exist (Redis SET NX).
+
+    Intended for lock acquisition — only the first caller succeeds.
+
+    Args:
+        key: Cache key.
+        value: Any JSON-serializable value (typically "1" for a lock flag).
+        ttl: Time-to-live in seconds (default: 5 minutes).
+
+    Returns:
+        True if key was set (lock acquired).
+        False if key already existed (lock already held).
+        True if Redis is unavailable (graceful degradation — allow the request).
+    """
+    client = get_redis()
+    if not client:
+        return True  # graceful degradation: allow request to proceed
+
+    try:
+        result = await client.set(key, value, nx=True, ex=ttl)
+        acquired = bool(result)
+        logger.debug("cache_set_nx", key=key, acquired=acquired, ttl=ttl)
+        return acquired
+    except Exception as e:
+        logger.warning("cache_set_nx_error", key=key, error=str(e))
+        return True  # graceful degradation: allow request to proceed

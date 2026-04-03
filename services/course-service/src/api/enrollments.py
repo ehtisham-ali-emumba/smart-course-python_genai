@@ -1,4 +1,5 @@
 import uuid as _uuid
+import logging
 
 from decimal import Decimal
 
@@ -15,6 +16,7 @@ from api.dependencies import (
     get_current_profile_id,
 )
 from core.database import get_db
+from core.enrollment_cache import EnrollmentWorkflowCache
 from shared.kafka.producer import EventProducer
 from shared.kafka.topics import Topics
 from shared.schemas.events.enrollment import (
@@ -30,6 +32,7 @@ from services.enrollment import EnrollmentService
 from temporal.enrollment import start_enrollment_workflow
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/", response_model=EnrollmentResponse, status_code=status.HTTP_201_CREATED)
@@ -44,7 +47,8 @@ async def enroll(
     Enroll the current user in a course.
 
     - If already enrolled → returns existing enrollment (200 OK)
-    - If not enrolled → starts enrollment workflow on Temporal (202 Accepted)
+    - If enrollment in progress → return 202 "Enrollment already in progress"
+    - If not enrolled and not in progress → starts enrollment workflow on Temporal (202 Accepted)
       The workflow will create the enrollment and send notifications.
     """
     user_id, role, profile_id = user
@@ -56,13 +60,21 @@ async def enroll(
 
     service = EnrollmentService(db)
 
-    # Check if already enrolled
+    # Step 1: Check if already enrolled
     existing = await service.enrollment_repo.get_by_student_and_course(profile_id, data.course_id)
     if existing:
-        # Already enrolled - return existing without starting workflow
-        return EnrollmentResponse.model_validate(existing)
+        # Already enrolled - return existing with message
+        enrollment_data = EnrollmentResponse.model_validate(existing)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": "Enrollment already created",
+                "enrollment": enrollment_data.model_dump(),
+                "status": "completed",
+            },
+        )
 
-    # Validate course exists and is available
+    # Step 2: Validate course exists and is available (before lock)
     course = await service.course_repo.get_by_id(data.course_id)
     if not course or course.is_deleted:  # type: ignore[truthy-bool]
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
@@ -72,16 +84,24 @@ async def enroll(
             detail="Course is not available for enrollment",
         )
 
-    # Check enrollment limit
-    if course.max_students:  # type: ignore[truthy-bool]
-        current_count = await service.enrollment_repo.count_by_course(data.course_id)
-        if current_count >= course.max_students:  # type: ignore[truthy-bool]
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Course enrollment limit reached",
-            )
+    # Step 3: Atomically acquire enrollment lock
+    lock_acquired = await EnrollmentWorkflowCache.acquire_lock(profile_id, data.course_id)
+    if not lock_acquired:
+        logger.info(
+            "Enrollment duplicate request detected",
+            extra={"student_id": str(profile_id), "course_id": str(data.course_id)},
+        )
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "message": "Enrollment already in progress",
+                "student_id": str(profile_id),
+                "course_id": str(data.course_id),
+                "status": "processing",
+            },
+        )
 
-    # Start enrollment workflow on Temporal
+    # Step 4: Start enrollment workflow on Temporal
     student_email = request.headers.get("X-User-Email") or ""
     await start_enrollment_workflow(
         temporal_client,
@@ -94,6 +114,7 @@ async def enroll(
         enrollment_source=data.enrollment_source or "web",
     )
 
+    # Step 5: Return 202 "Enrollment request received"
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
         content={
@@ -136,6 +157,19 @@ async def get_enrollment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
     if enrollment.student_id != user_id:  # type: ignore[truthy-bool]
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your enrollment")
+
+    # Check if enrollment is in progress
+    if await EnrollmentWorkflowCache.is_in_progress(user_id, enrollment.course_id):
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "message": "Enrollment in progress",
+                "student_id": str(user_id),
+                "course_id": str(enrollment.course_id),
+                "status": "processing",
+            },
+        )
+
     return EnrollmentResponse.model_validate(enrollment)
 
 
@@ -257,6 +291,12 @@ async def internal_create_enrollment(
     # Create enrollment
     try:
         enrollment = await service.enroll_student(profile_id, data)
+
+        # Release lock after successful enrollment creation
+        await EnrollmentWorkflowCache.release_lock(profile_id, data.course_id)
+
         return EnrollmentResponse.model_validate(enrollment)
     except ValueError as e:
+        # Release lock on failure too, so client isn't stuck seeing "in progress"
+        await EnrollmentWorkflowCache.release_lock(profile_id, data.course_id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -22,6 +22,17 @@ class BaseRepository(Generic[T]):
         await self.db.refresh(db_obj)
         return db_obj
 
+    async def create_in_tx(self, obj_in: dict) -> T:
+        """Create a new record within a transaction (flush only, no commit).
+
+        Used when the caller controls the transaction boundary.
+        The caller is responsible for committing the transaction.
+        """
+        db_obj = self.model(**obj_in)
+        self.db.add(db_obj)
+        await self.db.flush()
+        return db_obj
+
     async def get_by_id(self, id: _uuid.UUID) -> Optional[T]:
         """Get record by ID."""
         result = await self.db.execute(select(self.model).where(self.model.id == id))
@@ -45,6 +56,19 @@ class BaseRepository(Generic[T]):
                 setattr(db_obj, key, value)
             await self.db.commit()
             await self.db.refresh(db_obj)
+        return db_obj
+
+    async def update_in_tx(self, id: _uuid.UUID, obj_in: dict) -> Optional[T]:
+        """Update a record within a transaction (flush only, no commit).
+
+        Used when the caller controls the transaction boundary.
+        The caller is responsible for committing the transaction.
+        """
+        db_obj = await self.get_by_id(id)
+        if db_obj:
+            for key, value in obj_in.items():
+                setattr(db_obj, key, value)
+            await self.db.flush()
         return db_obj
 
     async def delete(self, id: _uuid.UUID) -> bool:

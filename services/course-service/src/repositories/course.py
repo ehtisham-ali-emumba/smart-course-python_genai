@@ -21,6 +21,18 @@ class CourseRepository(BaseRepository[Course]):
         )
         return result.scalars().first()
 
+    async def get_by_id_for_update(self, id: _uuid.UUID) -> Optional[Course]:
+        """Get course by ID with a row-level exclusive lock (SELECT ... FOR UPDATE).
+
+        Acquires a pessimistic lock on the course row within the current transaction.
+        This serializes concurrent access to the same course. Used in enrollment
+        operations to prevent race conditions around max_students check.
+
+        Must be called within an explicit transaction (e.g., async with self.db.begin()).
+        """
+        result = await self.db.execute(select(Course).where(Course.id == id).with_for_update())
+        return result.scalars().first()
+
     async def slug_exists(self, slug: str) -> bool:
         """Check if a slug already exists."""
         course = await self.get_by_slug(slug)
