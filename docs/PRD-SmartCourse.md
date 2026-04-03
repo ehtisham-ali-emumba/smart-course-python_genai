@@ -87,22 +87,6 @@ EduCorp's current system faces five core challenges:
 
 ### Persona 2: Student (Learner)
 
-| Attribute       | Detail                                                               |
-| --------------- | -------------------------------------------------------------------- |
-| **Role**        | Browses courses, enrolls, tracks progress, interacts with content    |
-| **Pain Points** | Cannot find relevant info, no contextual help, inconsistent progress |
-| **Needs**       | Smart search, AI Q&A on course material, reliable progress tracking  |
-
-### Persona 3: Admin (Platform Manager)
-
-| Attribute       | Detail                                                    |
-| --------------- | --------------------------------------------------------- |
-| **Role**        | Manages platform operations, users, analytics dashboards  |
-| **Pain Points** | Inconsistent reporting, no visibility into system health  |
-| **Needs**       | Accurate analytics, system observability, user management |
-
----
-
 ## 5. Key Use Cases
 
 ### UC-1: Course Creation & Publishing
@@ -174,8 +158,8 @@ EduCorp's current system faces five core challenges:
 
 | Field             | Detail                                                                           |
 | ----------------- | -------------------------------------------------------------------------------- |
-| **Actor**         | Admin / Instructor                                                               |
-| **Precondition**  | User has admin or instructor role                                                |
+| **Actor**         | Instructor                                                                       |
+| **Precondition**  | User has instructor role                                                         |
 | **Flow**          | 1. User navigates to analytics dashboard                                         |
 |                   | 2. System queries aggregated metrics (enrollments, completions, popular courses) |
 |                   | 3. System returns time-series and summary data                                   |
@@ -185,7 +169,7 @@ EduCorp's current system faces five core challenges:
 
 | Field             | Detail                                                               |
 | ----------------- | -------------------------------------------------------------------- |
-| **Actor**         | Student / Instructor / Admin                                         |
+| **Actor**         | Student / Instructor                                                 |
 | **Precondition**  | None                                                                 |
 | **Flow**          | 1. User registers with email, name, password, and role               |
 |                   | 2. System hashes password and stores user record                     |
@@ -224,7 +208,7 @@ EduCorp's current system faces five core challenges:
 
 | ID     | Requirement                                                                         | Priority | Use Case |
 | ------ | ----------------------------------------------------------------------------------- | -------- | -------- |
-| FR-2.1 | Users can register with email, name, password, and role (student/instructor/admin)  | Must     | UC-7     |
+| FR-2.1 | Users can register with email, name, password, and role (student/instructor)        | Must     | UC-7     |
 | FR-2.2 | Passwords are hashed using a secure algorithm (bcrypt)                              | Must     | UC-7     |
 | FR-2.3 | Login returns a JWT; API Gateway validates JWT on every request                     | Must     | UC-7     |
 | FR-2.4 | Role-based access control (RBAC) enforced at the gateway level                      | Must     | UC-7     |

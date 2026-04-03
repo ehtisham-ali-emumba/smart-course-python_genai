@@ -1,7 +1,7 @@
 # Postman Requests: Course & Content Creation
 
 **Base URL:** `http://localhost:8000`  
-**Auth:** All requests require `Authorization: Bearer <your_jwt_token>`. Instructor routes require role `instructor` or `admin`.
+**Auth:** All requests require `Authorization: Bearer <your_jwt_token>`. Instructor routes require role `instructor`.
 
 **Note:** Do **not** send `module_id` or `lesson_id` in any POST or PUT request body. They are always auto-generated.
 
@@ -19,6 +19,7 @@
 | Content-Type | application/json |
 
 **Body (raw JSON):**
+
 ```json
 {
   "title": "Advanced Python Programming",
@@ -47,6 +48,7 @@
 Replace `{course_id}` with the course ID from step 1 (e.g. `5`).
 
 **Body (raw JSON) — no `module_id` or `lesson_id`:**
+
 ```json
 {
   "modules": [
@@ -90,6 +92,7 @@ Replace `{course_id}` with the course ID from step 1 (e.g. `5`).
 **URL:** `http://localhost:8000/courses/{course_id}/content/modules`
 
 **Body — no `module_id`:**
+
 ```json
 {
   "title": "Module 2: Advanced Topics",
@@ -112,6 +115,7 @@ The response returns the auto-generated `module_id` (use it in the URL for addin
 Use `module_id` from the response of step 3 in the URL path.
 
 **Body — no `lesson_id`:**
+
 ```json
 {
   "title": "New Lesson",
@@ -131,6 +135,7 @@ Use `module_id` from the response of step 3 in the URL path.
 **URL:** `http://localhost:8000/courses/{course_id}/content/modules/{module_id}/lessons/{lesson_id}/resources`
 
 **Body — no `resource_id`:**
+
 ```json
 {
   "name": "Python Cheat Sheet",
@@ -145,11 +150,11 @@ Use `module_id` from the response of step 3 in the URL path.
 
 ## Summary: IDs in POST/PUT
 
-| Request | IDs in body? | IDs in URL? |
-|---------|--------------|-------------|
-| PUT content | Never — omit `module_id`, `lesson_id`, `resource_id` | `course_id` only |
-| POST module | Never | `course_id` only |
-| POST lesson | Never | `course_id`, `module_id` |
-| POST resource | Never | `course_id`, `module_id`, `lesson_id` |
+| Request       | IDs in body?                                         | IDs in URL?                           |
+| ------------- | ---------------------------------------------------- | ------------------------------------- |
+| PUT content   | Never — omit `module_id`, `lesson_id`, `resource_id` | `course_id` only                      |
+| POST module   | Never                                                | `course_id` only                      |
+| POST lesson   | Never                                                | `course_id`, `module_id`              |
+| POST resource | Never                                                | `course_id`, `module_id`, `lesson_id` |
 
 IDs are always auto-generated and returned in responses. Use them only in the URL for subsequent requests (e.g. add lesson) or for PATCH/DELETE.

@@ -41,7 +41,7 @@ def get_current_profile_id(request: Request) -> _uuid.UUID:
 def require_instructor(request: Request) -> _uuid.UUID:
     """Returns instructor profile_id (from X-Profile-ID header)."""
     role = get_current_user_role(request)
-    if role not in ("instructor", "admin"):
+    if role != "instructor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Instructor role required"
         )

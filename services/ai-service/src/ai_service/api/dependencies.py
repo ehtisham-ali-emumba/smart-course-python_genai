@@ -43,10 +43,10 @@ def get_current_profile_id(request: Request) -> _uuid.UUID:
 
 
 def require_instructor(request: Request) -> tuple[_uuid.UUID, _uuid.UUID]:
-    """Require instructor or admin role. Returns (user_id, profile_id)."""
+    """Require instructor role. Returns (user_id, profile_id)."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
-    if role not in ("instructor", "admin"):
+    if role != "instructor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Instructor role required",
@@ -56,10 +56,10 @@ def require_instructor(request: Request) -> tuple[_uuid.UUID, _uuid.UUID]:
 
 
 def require_student(request: Request) -> _uuid.UUID:
-    """Require student or admin role."""
+    """Require student role."""
     user_id = get_current_user_id(request)
     role = get_current_user_role(request)
-    if role not in ("student", "admin"):
+    if role != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Student role required",

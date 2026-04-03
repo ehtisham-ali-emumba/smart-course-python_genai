@@ -46,7 +46,7 @@ def create_access_token(
 
     Args:
         user_id: The user's ID
-        role: The user's role (student/instructor/admin)
+        role: The user's role (student/instructor)
         expires_delta: Optional custom expiry time
 
     Returns:

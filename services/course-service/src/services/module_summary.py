@@ -37,7 +37,7 @@ class ModuleSummaryService:
         viewer_id: _uuid.UUID,
         viewer_role: str,
     ) -> dict[str, Any] | None:
-        if viewer_role == "admin":
+        if viewer_role == "instructor":
             doc = await self.summary_repo.get_active_by_course_module(course_id, module_id)
             return self._to_response(doc) if doc else None
 

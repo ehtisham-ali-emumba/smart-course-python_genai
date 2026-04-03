@@ -31,7 +31,7 @@ class CertificateService:
     ) -> Certificate:
         """
         Issue a certificate for a completed enrollment.
-        - Instructors/admins: can issue for any completed enrollment.
+        - Instructors: can issue for any completed enrollment.
         - Students: can only claim for their own enrollment (verified by ownership).
         """
         enrollment = await self.enrollment_repo.get_by_id(data.enrollment_id)
@@ -43,7 +43,7 @@ class CertificateService:
             )
 
         # Students can only claim cert for their own enrollment
-        if role not in ("instructor", "admin"):
+        if role != "instructor":
             if enrollment.student_id != user_id:
                 raise ValueError("You can only request a certificate for your own enrollment")
 
@@ -102,7 +102,7 @@ class CertificateService:
         enrollment = await self.enrollment_repo.get_by_id(enrollment_id)
         if not enrollment:
             raise ValueError("Enrollment not found")
-        if role not in ("instructor", "admin") and enrollment.student_id != user_id:
+        if role != "instructor" and enrollment.student_id != user_id:
             raise ValueError("You can only view certificates for your own enrollments")
         cert = await self.cert_repo.get_by_enrollment(enrollment_id)
         if not cert:
