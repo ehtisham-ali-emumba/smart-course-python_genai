@@ -69,7 +69,7 @@ async def enroll(
             status_code=status.HTTP_200_OK,
             content={
                 "message": "Enrollment already created",
-                "enrollment": enrollment_data.model_dump(),
+                "enrollment": enrollment_data.model_dump(mode="json"),
                 "status": "completed",
             },
         )

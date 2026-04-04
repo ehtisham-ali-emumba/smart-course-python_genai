@@ -80,9 +80,10 @@ async def cache_delete(key: str) -> bool:
         return False
 
     try:
-        await client.delete(key)
-        logger.debug("cache_delete", key=key)
-        return True
+        deleted = await client.delete(key)
+        if deleted:
+            logger.debug("cache_delete", key=key)
+        return bool(deleted)
     except Exception as e:
         logger.warning("cache_delete_error", key=key, error=str(e))
         return False
