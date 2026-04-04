@@ -40,8 +40,9 @@
       "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "id": 3,
-      "targets": [{ "expr": "container_memory_usage_bytes{name=~\"smartcourse-.*\"} / container_spec_memory_limit_bytes{name=~\"smartcourse-.*\"}", "legendFormat": "{{name}}", "refId": "A" }],
-      "title": "Memory Usage vs Limit",
+      "targets": [{ "expr": "container_memory_usage_bytes{name=~\"smartcourse-.*\"} / 1024 / 1024", "legendFormat": "{{name}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "megabytes" }, "overrides": [] },
+      "title": "Memory Usage (MB)",
       "type": "timeseries"
     },
     {
