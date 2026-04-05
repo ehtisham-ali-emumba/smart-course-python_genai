@@ -121,7 +121,7 @@
     {
       "datasource": "Prometheus",
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 12 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 },
       "id": 10,
       "targets": [{ "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "refId": "A" }],
       "title": "Host CPU Usage",
@@ -130,19 +130,10 @@
     {
       "datasource": "Prometheus",
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 12 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 },
       "id": 11,
       "targets": [{ "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "refId": "A" }],
       "title": "Host Memory Usage",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 12 },
-      "id": 12,
-      "targets": [{ "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100", "refId": "A" }],
-      "title": "Host Disk Usage",
       "type": "timeseries"
     },
     {

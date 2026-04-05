@@ -22,7 +22,7 @@
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
       "id": 1,
-      "targets": [{ "expr": "pg_stat_activity_count", "refId": "A" }],
+      "targets": [{ "expr": "sum(pg_stat_activity_count{datname=\"smartcourse\"}) by (state)", "legendFormat": "{{state}}", "refId": "A" }],
       "title": "PostgreSQL Active Connections",
       "type": "timeseries"
     },
@@ -46,7 +46,7 @@
     },
     {
       "datasource": "Prometheus",
-      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "id": 4,
       "targets": [
@@ -73,28 +73,10 @@
     {
       "datasource": "Prometheus",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
-      "id": 6,
-      "targets": [{ "expr": "mongodb_connections_current", "refId": "A" }],
-      "title": "MongoDB Current Connections",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
       "id": 7,
       "targets": [{ "expr": "rate(mongodb_op_counters_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "MongoDB Operations per Second",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": { "defaults": { "unit": "decmbytes" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
-      "id": 8,
-      "targets": [{ "expr": "mongodb_memory_resident_megabytes", "refId": "A" }],
-      "title": "MongoDB Resident Memory",
       "type": "timeseries"
     }
   ],
