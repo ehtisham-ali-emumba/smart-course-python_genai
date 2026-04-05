@@ -26,7 +26,6 @@ from shared.storage.s3 import S3Uploader
 LESSON_TYPE_CONFIG: dict[str, dict] = {
     "video": {"folder": "course-content/videos", "category": "video", "max_mb": 500},
     "text": {"folder": "course-content/documents", "category": "pdf", "max_mb": 50},
-    "assignment": {"folder": "course-content/documents", "category": "document", "max_mb": 50},
     "quiz": {"folder": "course-content/images", "category": "image", "max_mb": 20},
     "audio": {"folder": "course-content/audio", "category": "audio", "max_mb": 200},
 }
@@ -133,7 +132,7 @@ async def add_lesson_with_file(
 
     Form fields:
     - title (str)
-    - type (str): video | text | quiz | assignment | audio
+    - type (str): video | text | quiz | audio
     - order (int)
     - duration_minutes (int, optional)
     - is_preview (bool, default false)
@@ -142,7 +141,6 @@ async def add_lesson_with_file(
     Allowed file types per lesson type:
     - video        mp4, webm, ogg, quicktime, avi  (max 500 MB)
     - text         pdf                              (max  50 MB)
-    - assignment   pdf, docx, xlsx, zip             (max  50 MB)
     - quiz         jpeg, png, gif, webp, svg        (max  20 MB)
     - audio        mp3, ogg, wav, webm              (max 200 MB)
     """

@@ -55,6 +55,20 @@ class ProgressService:
         if enrollment.status not in ("active", "completed"):
             raise ValueError("Enrollment is not active")
 
+        # Validate lesson item_id belongs to this course
+        if data.item_type == "lesson":
+            content = await self.content_repo.get_by_course_id(enrollment.course_id)
+            if content:
+                valid_lesson_ids = {
+                    str(lesson.get("lesson_id"))
+                    for module in content.get("modules", [])
+                    if module.get("is_active", True)
+                    for lesson in module.get("lessons", [])
+                    if lesson.get("is_active", True)
+                }
+                if data.item_id not in valid_lesson_ids:
+                    raise ValueError(f"lesson_id '{data.item_id}' does not exist in this course")
+
         progress = await self.progress_repo.upsert_progress(
             enrollment_id=data.enrollment_id,
             item_type=data.item_type,

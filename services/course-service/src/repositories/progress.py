@@ -2,6 +2,7 @@ import uuid as _uuid
 from datetime import datetime
 from typing import List, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,10 @@ class ProgressRepository(BaseRepository[Progress]):
                 constraint="uq_progress_enrollment_item",
                 set_={
                     "progress_percentage": progress_percentage,
-                    "completed_at": completed_at,
+                    "completed_at": sa.func.coalesce(
+                        Progress.__table__.c.completed_at,
+                        completed_at,
+                    ),
                     "updated_at": datetime.utcnow(),
                 },
             )

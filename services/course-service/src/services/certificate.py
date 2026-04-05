@@ -68,7 +68,7 @@ class CertificateService:
             from shared.kafka.topics import Topics
 
             await self._producer.publish(
-                Topics.COURSE,
+                Topics.CERTIFICATE,
                 "certificate.issued",
                 CertificateIssuedPayload(
                     certificate_id=cert.id,
@@ -135,7 +135,7 @@ class CertificateService:
             from shared.kafka.topics import Topics
 
             await self._producer.publish(
-                Topics.COURSE,
+                Topics.CERTIFICATE,
                 "certificate.revoked",
                 CertificateRevokedPayload(
                     certificate_id=certificate_id,

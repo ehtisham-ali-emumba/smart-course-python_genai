@@ -32,7 +32,7 @@ router = APIRouter()
 )
 async def upload_file(
     file: UploadFile = File(..., description="File to upload (video, pdf, audio, image)"),
-    lesson_type: str = Form(..., description="video | text | quiz | assignment | audio"),
+    lesson_type: str = Form(..., description="video | text | quiz | audio"),
     instructor_id: _uuid.UUID = Depends(require_instructor),
     uploader: S3Uploader = Depends(get_s3_uploader),
 ) -> S3UploadResponse:

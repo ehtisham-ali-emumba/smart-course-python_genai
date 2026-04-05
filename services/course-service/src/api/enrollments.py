@@ -20,6 +20,7 @@ from core.enrollment_cache import EnrollmentWorkflowCache
 from shared.kafka.producer import EventProducer
 from shared.kafka.topics import Topics
 from shared.schemas.events.enrollment import (
+    EnrollmentCreatedPayload,
     EnrollmentDroppedPayload,
     EnrollmentReactivatedPayload,
 )
@@ -267,9 +268,10 @@ async def internal_create_enrollment(
     data: EnrollmentCreate,
     user: tuple[_uuid.UUID, str, _uuid.UUID] = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
+    producer: EventProducer = Depends(get_event_producer),
 ):
     """
-    Internal endpoint: Create enrollment directly without publishing Kafka events.
+    Internal endpoint: Create enrollment and publish enrollment.created Kafka event.
     Used by core-service EnrollmentWorkflow to actually create the enrollment.
 
     This endpoint is idempotent - if enrollment already exists, returns it.
@@ -294,6 +296,18 @@ async def internal_create_enrollment(
 
         # Release lock after successful enrollment creation
         await EnrollmentWorkflowCache.release_lock(profile_id, data.course_id)
+
+        await producer.publish(
+            Topics.ENROLLMENT,
+            "enrollment.created",
+            EnrollmentCreatedPayload(
+                enrollment_id=enrollment.id,
+                student_id=enrollment.student_id,
+                course_id=enrollment.course_id,
+                course_title="",
+            ).model_dump(),
+            key=str(enrollment.student_id),
+        )
 
         return EnrollmentResponse.model_validate(enrollment)
     except ValueError as e:

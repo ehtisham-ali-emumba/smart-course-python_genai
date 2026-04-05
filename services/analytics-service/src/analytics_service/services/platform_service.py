@@ -34,6 +34,9 @@ class PlatformAnalyticsService:
         total_completions = await self.session.scalar(
             select(func.coalesce(func.sum(CourseMetrics.completed_enrollments), 0))
         ) or 0
+        total_certificates_issued = await self.session.scalar(
+            select(func.coalesce(func.sum(StudentMetrics.total_certificates), 0))
+        ) or 0
 
         avg_completion_rate = Decimal("0.00")
         if total_enrollments > 0:
@@ -55,7 +58,7 @@ class PlatformAnalyticsService:
             "total_completions": total_completions,
             "avg_completion_rate": avg_completion_rate,
             "avg_courses_per_student": avg_courses_per_student,
-            "total_certificates_issued": 0,
+            "total_certificates_issued": total_certificates_issued,
         }
 
     async def trends(self, date_from: date, date_to: date) -> list[dict]:

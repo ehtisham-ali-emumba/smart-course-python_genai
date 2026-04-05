@@ -68,8 +68,6 @@ class StudentProfileResponse(BaseModel):
     bio: Optional[str]
     education_level: Optional[str]
     profile_picture_url: Optional[str]
-    total_enrollments: int
-    total_completed: int
     created_at: datetime
     updated_at: datetime
 

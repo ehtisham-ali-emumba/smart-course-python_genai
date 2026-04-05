@@ -20,9 +20,6 @@ class StudentProfile(Base):
     education_level: Mapped[str | None] = mapped_column(String(100), default=None)
     profile_picture_url: Mapped[str | None] = mapped_column(String(500), default=None)
 
-    total_enrollments: Mapped[int] = mapped_column(default=0)
-    total_completed: Mapped[int] = mapped_column(default=0)
-
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),

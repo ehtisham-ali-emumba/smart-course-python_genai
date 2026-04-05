@@ -249,7 +249,7 @@ class QuizAttemptService:
 
     async def _get_published_quiz(self, course_id: _uuid.UUID, module_id: str) -> dict[str, Any]:
         quiz_doc = await self.quiz_repo.get_published_by_course_module(course_id, module_id)
-        if not quiz_doc or not quiz_doc.get("is_active", True):
+        if not quiz_doc:
             raise LookupError("Quiz not found")
         return quiz_doc
 

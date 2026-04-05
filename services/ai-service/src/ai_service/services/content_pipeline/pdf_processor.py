@@ -114,7 +114,7 @@ def build_pdf_extraction_node(openai_client=None):
     """
 
     async def extract_pdfs(state) -> dict:
-        lessons = state.lessons
+        lessons = state.lessons if hasattr(state, "lessons") else state.get("lessons", [])
         log = logger.bind(num_lessons=len(lessons))
         log.info("[PDF_PROCESSOR] Starting PDF extraction for all lessons")
 

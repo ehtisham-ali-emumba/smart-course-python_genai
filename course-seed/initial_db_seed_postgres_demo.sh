@@ -280,7 +280,6 @@ materialized AS (
     enrollment_id,
     'CERT-' || upper(substr(md5('cert:' || enrollment_id::text), 1, 10)) AS certificate_number,
     COALESCE(completed_at::date, current_date) AS issue_date,
-    'https://certs.smartcourse.local/' || lower(substr(md5('cert:' || enrollment_id::text), 1, 16)) AS certificate_url,
     upper(substr(md5('verify:' || enrollment_id::text), 1, 12)) AS verification_code
   FROM completed_enrollments
 )
@@ -289,7 +288,6 @@ INSERT INTO certificates (
   enrollment_id,
   certificate_number,
   issue_date,
-  certificate_url,
   verification_code,
   grade,
   score_percentage,
@@ -300,7 +298,6 @@ SELECT
   m.enrollment_id,
   m.certificate_number,
   m.issue_date,
-  m.certificate_url,
   m.verification_code,
   'A'::text,
   COALESCE((SELECT qa.score FROM quiz_attempts qa WHERE qa.enrollment_id = m.enrollment_id LIMIT 1), 91.00),
@@ -309,7 +306,6 @@ FROM materialized m
 ON CONFLICT (enrollment_id)
 DO UPDATE SET
   issue_date = EXCLUDED.issue_date,
-  certificate_url = EXCLUDED.certificate_url,
   grade = EXCLUDED.grade,
   score_percentage = EXCLUDED.score_percentage,
   is_revoked = false;

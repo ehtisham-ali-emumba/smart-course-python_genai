@@ -26,7 +26,7 @@ class LessonSchema(BaseModel):
 
     lesson_id: str = Field(default_factory=generate_object_id)
     title: str
-    type: str = Field(..., pattern=r"^(video|text|quiz|assignment|audio)$")
+    type: str = Field(..., pattern=r"^(video|text|quiz|audio)$")
     content: Optional[str] = None
     duration_minutes: Optional[int] = None
     order: int
@@ -90,7 +90,7 @@ class LessonCreate(BaseModel):
 
     lesson_id: str = Field(default_factory=generate_object_id)
     title: str
-    type: str = Field(..., pattern=r"^(video|text|quiz|assignment|audio)$")
+    type: str = Field(..., pattern=r"^(video|text|quiz|audio)$")
     content: Optional[str] = None
     duration_minutes: Optional[int] = None
     order: int
@@ -113,7 +113,7 @@ class LessonUpdate(BaseModel):
     """Schema for updating a lesson."""
 
     title: Optional[str] = None
-    type: Optional[str] = Field(None, pattern=r"^(video|text|quiz|assignment|audio)$")
+    type: Optional[str] = Field(None, pattern=r"^(video|text|quiz|audio)$")
     content: Optional[str] = None
     duration_minutes: Optional[int] = None
     order: Optional[int] = None

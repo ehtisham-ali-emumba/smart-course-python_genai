@@ -19,6 +19,7 @@ from shared.kafka.consumer import EventConsumer
 logger = logging.getLogger(__name__)
 
 CACHE_PATTERNS = [
+    "analytics:platform:overview",
     "analytics:courses:popular:*",
     "analytics:course:*",
     "analytics:instructor:*",

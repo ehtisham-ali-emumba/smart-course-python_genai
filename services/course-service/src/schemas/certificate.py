@@ -21,7 +21,6 @@ class CertificateResponse(BaseModel):
     enrollment_id: UUID
     certificate_number: str
     issue_date: date
-    certificate_url: Optional[str]
     verification_code: str
     grade: Optional[str]
     score_percentage: Optional[Decimal]

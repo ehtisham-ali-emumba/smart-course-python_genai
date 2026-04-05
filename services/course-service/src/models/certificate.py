@@ -17,7 +17,6 @@ class Certificate(Base):
     )
     certificate_number: Mapped[str] = mapped_column(String(100), unique=True)
     issue_date: Mapped[date] = mapped_column(server_default=func.current_date())
-    certificate_url: Mapped[str | None] = mapped_column(String(500), default=None)
     verification_code: Mapped[str] = mapped_column(String(50), unique=True)
     grade: Mapped[str | None] = mapped_column(String(10), default=None)
     score_percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
