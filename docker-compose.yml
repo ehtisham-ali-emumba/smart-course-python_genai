@@ -74,6 +74,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: smartcourse-kafka
+    restart: on-failure
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -92,7 +93,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 30s
+      start_period: 60s
     networks:
       - smartcourse-network
 
@@ -272,6 +273,12 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - smartcourse-network
 
@@ -303,6 +310,12 @@ services:
         condition: service_completed_successfully
       temporal:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - smartcourse-network
 
@@ -325,6 +338,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - smartcourse-network
 
@@ -382,6 +401,12 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - smartcourse-network
 
@@ -409,6 +434,12 @@ services:
         condition: service_completed_successfully
       qdrant:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8009/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - smartcourse-network
 
@@ -569,7 +600,8 @@ services:
     command:
       - "-nginx.scrape-uri=http://api-gateway:8000/stub_status"
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
     networks:
       - smartcourse-network
 
@@ -617,13 +649,20 @@ services:
     ports:
       - "8000:8000"           # The ONLY port clients should access
     depends_on:
-      - auth-sidecar
-      - user-service
-      - course-service
-      - notification-service
-      - core-service
-      - analytics-service
-      - ai-service
+      auth-sidecar:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      course-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
       interval: 15s
