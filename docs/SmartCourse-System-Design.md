@@ -30,18 +30,7 @@
 
 SmartCourse is a distributed, event-driven microservices platform for intelligent course delivery. The system combines traditional CRUD services with AI-powered content generation, RAG-based tutoring, and workflow orchestration to provide a comprehensive e-learning experience.
 
-### 1.1 Design Principles
-
-| Principle | Application |
-|-----------|-------------|
-| **Single Responsibility** | Each service owns one bounded context (users, courses, AI, etc.) |
-| **Event-Driven** | Services communicate asynchronously via Kafka; synchronous calls only where latency-critical |
-| **Workflow as Code** | Multi-step business processes orchestrated through Temporal, not ad-hoc service chains |
-| **Polyglot Persistence** | PostgreSQL for relational data, MongoDB for documents, Qdrant for vectors, Redis for cache |
-| **Gateway Pattern** | Single entry point (Nginx) handles auth, rate limiting, and routing |
-| **Shared Nothing** | Each service owns its database; no shared DB access across services |
-
-### 1.2 Service Inventory
+### 1.1 Service Inventory
 
 | Service | Port | Technology | Database | Purpose |
 |---------|------|------------|----------|---------|
