@@ -30,6 +30,7 @@ app = FastAPI(
     description="Read-optimized analytics APIs backed by materialized metrics",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/analytics-service",
 )
 
 instrumentator = Instrumentator(

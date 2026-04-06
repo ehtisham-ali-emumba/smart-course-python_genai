@@ -40,12 +40,12 @@ SmartCourse is an intelligent, large-scale learning platform commissioned by Edu
 
 EduCorp's current system faces four core challenges:
 
-| #   | Problem                                  | Business Impact                                                 |
-| --- | ---------------------------------------- | --------------------------------------------------------------- |
-| P1  | Content publishing is slow and manual    | Instructors cannot launch/update courses efficiently            |
-| P2  | Students lack intelligent search/support | Low engagement, students cannot find relevant content           |
-| P3  | Data is scattered and inconsistent       | Dashboards conflict with actual platform state                  |
-| P4  | High traffic causes processing delays    | Enrollment spikes degrade UX                                    |
+| #   | Problem                                  | Business Impact                                       |
+| --- | ---------------------------------------- | ----------------------------------------------------- |
+| P1  | Content publishing is slow and manual    | Instructors cannot launch/update courses efficiently  |
+| P2  | Students lack intelligent search/support | Low engagement, students cannot find relevant content |
+| P3  | Data is scattered and inconsistent       | Dashboards conflict with actual platform state        |
+| P4  | High traffic causes processing delays    | Enrollment spikes degrade UX                          |
 
 ---
 
@@ -84,11 +84,11 @@ EduCorp's current system faces four core challenges:
 
 ### Persona 2: Student (Learner)
 
-| Attribute       | Detail                                                                  |
-| --------------- | ----------------------------------------------------------------------- |
+| Attribute       | Detail                                                                           |
+| --------------- | -------------------------------------------------------------------------------- |
 | **Role**        | Browses courses, enrolls, tracks progress, uses AI assistant, earns certificates |
-| **Pain Points** | Hard to find relevant content, no contextual support, no progress visibility |
-| **Needs**       | Intelligent search, AI Q&A, progress tracking, completion certificates  |
+| **Pain Points** | Hard to find relevant content, no contextual support, no progress visibility     |
+| **Needs**       | Intelligent search, AI Q&A, progress tracking, completion certificates           |
 
 ## 5. Key Use Cases
 
@@ -244,14 +244,14 @@ EduCorp's current system faces four core challenges:
 
 ### FR-5: Event-Driven Processing & Workflows
 
-| ID     | Requirement                                                                          | Priority | Use Case   |
-| ------ | ------------------------------------------------------------------------------------ | -------- | ---------- |
-| FR-5.1 | Course publishing triggers an asynchronous content processing pipeline               | Must     | UC-1       |
-| FR-5.2 | Enrollment triggers asynchronous analytics update, progress init, notification       | Must     | UC-2       |
-| FR-5.3 | All background tasks are idempotent (no double-processing)                           | Must     | UC-1, UC-2 |
-| FR-5.4 | Workflows are orchestrated via Temporal for multi-step processes                     | Must     | UC-1       |
-| FR-5.5 | Celery workers handle independent background tasks (notifications, analytics)        | Must     | UC-2, UC-8 |
-| FR-5.6 | Kafka is used for event streaming between services                                   | Must     | UC-2, UC-8 |
+| ID     | Requirement                                                                    | Priority | Use Case   |
+| ------ | ------------------------------------------------------------------------------ | -------- | ---------- |
+| FR-5.1 | Course publishing triggers an asynchronous content processing pipeline         | Must     | UC-1       |
+| FR-5.2 | Enrollment triggers asynchronous analytics update, progress init, notification | Must     | UC-2       |
+| FR-5.3 | All background tasks are idempotent (no double-processing)                     | Must     | UC-1, UC-2 |
+| FR-5.4 | Workflows are orchestrated via Temporal for multi-step processes               | Must     | UC-1       |
+| FR-5.5 | Celery workers handle independent background tasks (notifications, analytics)  | Must     | UC-2, UC-8 |
+| FR-5.6 | Kafka is used for event streaming between services                             | Must     | UC-2, UC-8 |
 
 ### FR-6: Analytics & Reporting
 
@@ -290,25 +290,25 @@ EduCorp's current system faces four core challenges:
 
 ### NFR-2: Reliability & Fault Tolerance
 
-| ID      | Requirement                                                               | Target                    |
-| ------- | ------------------------------------------------------------------------- | ------------------------- |
-| NFR-2.1 | Idempotent event processing                                               | Deduplication at consumer |
-| NFR-2.2 | Database consistency across services                                      | Transactional writes      |
+| ID      | Requirement                          | Target                    |
+| ------- | ------------------------------------ | ------------------------- |
+| NFR-2.1 | Idempotent event processing          | Deduplication at consumer |
+| NFR-2.2 | Database consistency across services | Transactional writes      |
 
 ### NFR-3: Observability
 
-| ID      | Requirement                                               | Target                 |
-| ------- | --------------------------------------------------------- | ---------------------- |
-| NFR-3.1 | Structured logging for all services                       | JSON format          |
-| NFR-3.2 | Metrics dashboards for system health                      | Prometheus + Grafana |
+| ID      | Requirement                          | Target               |
+| ------- | ------------------------------------ | -------------------- |
+| NFR-3.1 | Structured logging for all services  | JSON format          |
+| NFR-3.2 | Metrics dashboards for system health | Prometheus + Grafana |
 
 ### NFR-4: Security
 
-| ID      | Requirement                                | Target                |
-| ------- | ------------------------------------------ | --------------------- |
-| NFR-4.1 | All API endpoints authenticated via JWT    | HS256 at gateway      |
-| NFR-4.2 | Passwords hashed with bcrypt               | Cost factor 12        |
-| NFR-4.3 | No secrets in source code or logs          | Environment variables |
+| ID      | Requirement                             | Target                |
+| ------- | --------------------------------------- | --------------------- |
+| NFR-4.1 | All API endpoints authenticated via JWT | HS256 at gateway      |
+| NFR-4.2 | Passwords hashed with bcrypt            | Cost factor 12        |
+| NFR-4.3 | No secrets in source code or logs       | Environment variables |
 
 ### NFR-5: Maintainability
 
@@ -385,16 +385,16 @@ Student enrolls in course
 
 ## 9. Implementation Timeline & Milestones
 
-### Phase 1: Foundation (Weeks 1–2)
+### Phase 1: Foundation (Weeks 1)
 
-| Milestone | Deliverable                                                         | Requirements Covered    |
-| --------- | ------------------------------------------------------------------- | ----------------------- |
-| M1.1      | Project scaffolding: monorepo structure, Docker Compose, shared lib | NFR-6.1, NFR-6.3        |
-| M1.2      | User Service: registration, login, JWT, profiles                    | FR-2.1–FR-2.6           |
-| M1.3      | API Gateway: routing, JWT validation, rate limiting                 | FR-2.3, NFR-5.1         |
-| M1.4      | Database setup: PostgreSQL, Alembic migrations                      | NFR-6.2                 |
+| Milestone | Deliverable                                                         | Requirements Covered |
+| --------- | ------------------------------------------------------------------- | -------------------- |
+| M1.1      | Project scaffolding: monorepo structure, Docker Compose, shared lib | NFR-6.1, NFR-6.3     |
+| M1.2      | User Service: registration, login, JWT, profiles                    | FR-2.1–FR-2.6        |
+| M1.3      | API Gateway: routing, JWT validation, rate limiting                 | FR-2.3, NFR-5.1      |
+| M1.4      | Database setup: PostgreSQL, Alembic migrations                      | NFR-6.2              |
 
-### Phase 2: Core Course Management (Weeks 3–4)
+### Phase 2: Core Course Management (Weeks 2)
 
 | Milestone | Deliverable                                                  | Requirements Covered |
 | --------- | ------------------------------------------------------------ | -------------------- |
@@ -403,7 +403,7 @@ Student enrolls in course
 | M2.3      | Material upload: support PDF, video, text uploads to modules | FR-1.3               |
 | M2.4      | Course browsing and search for students                      | FR-1.7               |
 
-### Phase 3: Enrollment & Progress (Weeks 5–6)
+### Phase 3: Enrollment & Progress (Weeks 2)
 
 | Milestone | Deliverable                                                   | Requirements Covered |
 | --------- | ------------------------------------------------------------- | -------------------- |
@@ -412,7 +412,7 @@ Student enrolls in course
 | M3.3      | Certificate generation on course completion                   | FR-3.6               |
 | M3.4      | Enrollment history and query APIs                             | FR-3.8               |
 
-### Phase 4: Event-Driven Architecture (Weeks 7–8)
+### Phase 4: Event-Driven Architecture (Weeks 2)
 
 | Milestone | Deliverable                                                         | Requirements Covered |
 | --------- | ------------------------------------------------------------------- | -------------------- |
@@ -421,7 +421,7 @@ Student enrolls in course
 | M4.3      | Enrollment pipeline: analytics + progress + notification via events | FR-5.2, FR-5.6       |
 | M4.4      | Idempotency and retry logic                                         | FR-5.3               |
 
-### Phase 5: AI & Intelligent Assistant (Weeks 9–10)
+### Phase 5: AI & Intelligent Assistant (Weeks 3)
 
 | Milestone | Deliverable                                                | Requirements Covered   |
 | --------- | ---------------------------------------------------------- | ---------------------- |
@@ -430,7 +430,7 @@ Student enrolls in course
 | M5.3      | AI content generation: summaries, quizzes, objectives      | FR-4.4, FR-4.5, FR-4.6 |
 | M5.4      | LangGraph agent integration                                | FR-4.7                 |
 
-### Phase 6: Analytics & Notifications (Weeks 11–12)
+### Phase 6: Analytics & Notifications (Weeks 4)
 
 | Milestone | Deliverable                                        | Requirements Covered |
 | --------- | -------------------------------------------------- | -------------------- |
@@ -438,14 +438,14 @@ Student enrolls in course
 | M6.2      | Notification service: email, in-app, push channels | FR-7.1–FR-7.4        |
 | M6.3      | Event consumption for both services from Kafka     | FR-5.5, FR-5.6       |
 
-### Phase 7: Observability & Hardening (Weeks 13–14)
+### Phase 7: Observability & Hardening (Weeks 5, 6)
 
-| Milestone | Deliverable                                       | Requirements Covered     |
-| --------- | ------------------------------------------------- | ------------------------ |
-| M7.1      | Structured logging across all services            | NFR-4.1                  |
-| M7.2      | Prometheus metrics + Grafana dashboards           | NFR-4.2                  |
-| M7.3      | Load testing and performance validation           | NFR-1.1–NFR-1.4, NFR-2.1 |
-| M7.5      | End-to-end integration testing                    | All FR                   |
+| Milestone | Deliverable                             | Requirements Covered     |
+| --------- | --------------------------------------- | ------------------------ |
+| M7.1      | Structured logging across all services  | NFR-4.1                  |
+| M7.2      | Prometheus metrics + Grafana dashboards | NFR-4.2                  |
+| M7.3      | Load testing and performance validation | NFR-1.1–NFR-1.4, NFR-2.1 |
+| M7.5      | End-to-end integration testing          | All FR                   |
 
 ---
 
@@ -453,16 +453,16 @@ Student enrolls in course
 
 This matrix maps **business goals** → **functional requirements** → **use cases** → **milestones**, ensuring every feature is traceable from business need to deliverable.
 
-| Business Goal | Functional Requirements        | Use Cases        | Milestones      |
-| ------------- | ------------------------------ | ---------------- | --------------- |
-| BG-1          | FR-1.1–FR-1.7                  | UC-1             | M2.1–M2.4       |
-| BG-1          | FR-2.1–FR-2.5                  | UC-7             | M1.2–M1.3       |
-| BG-2          | FR-5.1–FR-5.7                  | UC-1, UC-2, UC-8 | M4.1–M4.4       |
-| BG-3          | FR-3.1–FR-3.8                  | UC-2, UC-3       | M3.1–M3.4       |
-| BG-3          | FR-6.1–FR-6.8                  | UC-6             | M6.1            |
-| BG-4          | FR-4.1–FR-4.8                  | UC-4, UC-5       | M5.1–M5.4       |
-| BG-5          | FR-4.3, FR-5.1, FR-5.2         | UC-4, UC-5       | M5.2, M4.2–M4.3  |
-| BG-6          | FR-5.4–FR-5.6                   | All              | M4.1–M4.4, M7.3 |
+| Business Goal | Functional Requirements | Use Cases        | Milestones      |
+| ------------- | ----------------------- | ---------------- | --------------- |
+| BG-1          | FR-1.1–FR-1.7           | UC-1             | M2.1–M2.4       |
+| BG-1          | FR-2.1–FR-2.5           | UC-7             | M1.2–M1.3       |
+| BG-2          | FR-5.1–FR-5.7           | UC-1, UC-2, UC-8 | M4.1–M4.4       |
+| BG-3          | FR-3.1–FR-3.8           | UC-2, UC-3       | M3.1–M3.4       |
+| BG-3          | FR-6.1–FR-6.8           | UC-6             | M6.1            |
+| BG-4          | FR-4.1–FR-4.8           | UC-4, UC-5       | M5.1–M5.4       |
+| BG-5          | FR-4.3, FR-5.1, FR-5.2  | UC-4, UC-5       | M5.2, M4.2–M4.3 |
+| BG-6          | FR-5.4–FR-5.6           | All              | M4.1–M4.4, M7.3 |
 
 ### Requirement Coverage Summary
 
@@ -481,14 +481,14 @@ This matrix maps **business goals** → **functional requirements** → **use ca
 
 ## 11. Glossary
 
-| Term                  | Definition                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| **RAG**               | Retrieval-Augmented Generation — AI pattern combining search with LLM generation       |
-| **Idempotent**        | An operation that produces the same result regardless of how many times it is executed |
-| **SSE**               | Server-Sent Events — HTTP-based streaming for real-time updates                        |
-| **Vector DB**         | Database optimized for storing and querying high-dimensional embeddings                |
-| **LangGraph**         | Framework for building stateful, multi-step AI agent workflows                         |
-| **JWT**               | JSON Web Token — compact, self-contained token for authentication                      |
+| Term           | Definition                                                                             |
+| -------------- | -------------------------------------------------------------------------------------- |
+| **RAG**        | Retrieval-Augmented Generation — AI pattern combining search with LLM generation       |
+| **Idempotent** | An operation that produces the same result regardless of how many times it is executed |
+| **SSE**        | Server-Sent Events — HTTP-based streaming for real-time updates                        |
+| **Vector DB**  | Database optimized for storing and querying high-dimensional embeddings                |
+| **LangGraph**  | Framework for building stateful, multi-step AI agent workflows                         |
+| **JWT**        | JSON Web Token — compact, self-contained token for authentication                      |
 
 ---
 

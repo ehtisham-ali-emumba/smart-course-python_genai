@@ -79,6 +79,7 @@ app = FastAPI(
     description="AI-powered content generation, tutoring, and indexing",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/ai-service",
 )
 
 instrumentator = Instrumentator(

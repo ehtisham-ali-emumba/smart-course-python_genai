@@ -53,6 +53,7 @@ app = FastAPI(
     description="Handles email, push, and in-app notifications for the SmartCourse platform",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/notification-service",
 )
 
 # Expose Prometheus metrics

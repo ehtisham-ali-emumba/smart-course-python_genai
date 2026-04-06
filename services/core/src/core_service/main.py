@@ -64,6 +64,7 @@ app = FastAPI(
     description="Workflow orchestration and cross-cutting platform workflows",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/core-service",
 )
 # Expose Prometheus metrics
 instrumentator = Instrumentator(

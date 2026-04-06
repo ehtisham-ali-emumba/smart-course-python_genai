@@ -46,6 +46,7 @@ app = FastAPI(
     description="User authentication and profile management",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/user-service",
 )
 
 # Expose Prometheus metrics

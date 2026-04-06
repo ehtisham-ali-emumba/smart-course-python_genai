@@ -72,6 +72,7 @@ app = FastAPI(
     description="Course management, enrollment, and certification",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/course-service",
 )
 
 # Expose Prometheus metrics
