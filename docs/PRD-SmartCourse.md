@@ -25,22 +25,20 @@
 8. [System Architecture Overview](#8-system-architecture-overview)
 9. [Implementation Timeline &amp; Milestones](#9-implementation-timeline--milestones)
 10. [Traceability Matrix](#10-traceability-matrix)
-11. [Risks &amp; Mitigations](#11-risks--mitigations)
-12. [Success Metrics](#12-success-metrics)
-13. [Glossary](#13-glossary)
-14. [References](#14-references)
+11. [Glossary](#11-glossary)
+12. [References](#12-references)
 
 ---
 
 ## 1. Executive Summary
 
-SmartCourse is an intelligent, large-scale learning platform commissioned by EduCorp to support digital education for universities, enterprises, and training academies. The platform addresses critical pain points in content publishing speed, intelligent search, data consistency, scalability under traffic spikes, and underutilization of interaction data. This PRD defines the scope, requirements, milestones, and traceability for the backend system that powers SmartCourse.
+SmartCourse is an intelligent, large-scale learning platform commissioned by EduCorp to support digital education for universities, enterprises, and training academies. The platform addresses critical pain points in content publishing speed, intelligent search, data consistency, and scalability under traffic spikes. This PRD defines the scope, requirements, milestones, and traceability for the backend system that powers SmartCourse.
 
 ---
 
 ## 2. Problem Statement
 
-EduCorp's current system faces five core challenges:
+EduCorp's current system faces four core challenges:
 
 | #   | Problem                                  | Business Impact                                                 |
 | --- | ---------------------------------------- | --------------------------------------------------------------- |
@@ -48,7 +46,6 @@ EduCorp's current system faces five core challenges:
 | P2  | Students lack intelligent search/support | Low engagement, students cannot find relevant content           |
 | P3  | Data is scattered and inconsistent       | Dashboards conflict with actual platform state                  |
 | P4  | High traffic causes processing delays    | Enrollment spikes degrade UX                                    |
-| P5  | Interaction data is underutilized        | No recommendations or adaptive learning despite rich usage data |
 
 ---
 
@@ -61,7 +58,7 @@ EduCorp's current system faces five core challenges:
 | BG-1 | Robust course management system           | P1              |
 | BG-2 | Scalable and reliable operations backbone | P4              |
 | BG-3 | Consistent and accurate learner data      | P3              |
-| BG-4 | Intelligent learning experiences          | P2, P5          |
+| BG-4 | Intelligent learning experiences          | P2              |
 | BG-5 | Smooth real-time interactions             | P4              |
 | BG-6 | Long-term scalability foundation          | P4              |
 
@@ -71,7 +68,7 @@ EduCorp's current system faces five core challenges:
 - **O2:** Provide an AI-powered learning assistant for contextual Q&A and content generation.
 - **O3:** Build event-driven, fault-tolerant background processing for publishing, enrollment, notifications, and analytics.
 - **O4:** Deliver a consistent, queryable data layer across all services.
-- **O5:** Achieve observability across all critical flows via structured logging, tracing, and metrics.
+- **O5:** Achieve observability across all critical flows via structured logging and metrics.
 
 ---
 
@@ -87,6 +84,12 @@ EduCorp's current system faces five core challenges:
 
 ### Persona 2: Student (Learner)
 
+| Attribute       | Detail                                                                  |
+| --------------- | ----------------------------------------------------------------------- |
+| **Role**        | Browses courses, enrolls, tracks progress, uses AI assistant, earns certificates |
+| **Pain Points** | Hard to find relevant content, no contextual support, no progress visibility |
+| **Needs**       | Intelligent search, AI Q&A, progress tracking, completion certificates  |
+
 ## 5. Key Use Cases
 
 ### UC-1: Course Creation & Publishing
@@ -101,7 +104,6 @@ EduCorp's current system faces five core challenges:
 |                   | 4. System triggers background pipeline: content extraction, chunking, vector indexing |
 |                   | 5. System marks course as "published" once all processing completes                   |
 | **Postcondition** | Course is searchable, browsable, and ready for enrollment                             |
-| **Error Paths**   | Partial processing failure triggers retry; course remains in "processing" state       |
 
 ### UC-2: Student Enrollment
 
@@ -211,9 +213,8 @@ EduCorp's current system faces five core challenges:
 | FR-2.1 | Users can register with email, name, password, and role (student/instructor)        | Must     | UC-7     |
 | FR-2.2 | Passwords are hashed using a secure algorithm (bcrypt)                              | Must     | UC-7     |
 | FR-2.3 | Login returns a JWT; API Gateway validates JWT on every request                     | Must     | UC-7     |
-| FR-2.4 | Role-based access control (RBAC) enforced at the gateway level                      | Must     | UC-7     |
-| FR-2.5 | Student and Instructor profiles are maintained separately with role-specific fields | Must     | UC-7     |
-| FR-2.6 | Users can upload and update profile avatars                                         | Should   | UC-7     |
+| FR-2.4 | Student and Instructor profiles are maintained separately with role-specific fields | Must     | UC-7     |
+| FR-2.5 | Users can upload and update profile avatars                                         | Should   | UC-7     |
 
 ### FR-3: Enrollment & Progress
 
@@ -248,11 +249,9 @@ EduCorp's current system faces five core challenges:
 | FR-5.1 | Course publishing triggers an asynchronous content processing pipeline               | Must     | UC-1       |
 | FR-5.2 | Enrollment triggers asynchronous analytics update, progress init, notification       | Must     | UC-2       |
 | FR-5.3 | All background tasks are idempotent (no double-processing)                           | Must     | UC-1, UC-2 |
-| FR-5.4 | Failed tasks are retried with backoff; dead-letter queues capture permanent failures | Must     | UC-1, UC-2 |
-| FR-5.5 | Workflows are orchestrated via Temporal for multi-step processes                     | Must     | UC-1       |
-| FR-5.6 | Celery workers handle independent background tasks (notifications, analytics)        | Must     | UC-2, UC-8 |
-| FR-5.7 | Kafka is used for event streaming between services                                   | Must     | UC-2, UC-8 |
-| FR-5.8 | System supports backpressure handling during traffic spikes                          | Should   | UC-2       |
+| FR-5.4 | Workflows are orchestrated via Temporal for multi-step processes                     | Must     | UC-1       |
+| FR-5.5 | Celery workers handle independent background tasks (notifications, analytics)        | Must     | UC-2, UC-8 |
+| FR-5.6 | Kafka is used for event streaming between services                                   | Must     | UC-2, UC-8 |
 
 ### FR-6: Analytics & Reporting
 
@@ -289,49 +288,36 @@ EduCorp's current system faces five core challenges:
 | NFR-1.3 | Background task processing latency (enrollment pipeline) | < 7 seconds end-to-end  |
 | NFR-1.4 | Content publishing pipeline completion                   | < 90 seconds per course |
 
-### NFR-2: Scalability
-
-| ID      | Requirement                                            | Target                 |
-| ------- | ------------------------------------------------------ | ---------------------- |
-| NFR-2.1 | Support 10,000+ concurrent learners                    | Horizontal scaling     |
-| xxxx    | Handle enrollment spikes during course launches        | Backpressure + queuing |
-| NFR-2.3 | Background workers scale independently of API services | Docker + Celery        |
-
-### NFR-3: Reliability & Fault Tolerance
+### NFR-2: Reliability & Fault Tolerance
 
 | ID      | Requirement                                                               | Target                    |
 | ------- | ------------------------------------------------------------------------- | ------------------------- |
-| NFR-3.1 | No data loss on service failure                                           | Persistent queues         |
-| NFR-3.2 | Idempotent event processing                                               | Deduplication at consumer |
-| xxx     | Graceful degradation: AI service unavailability does not block core flows | Circuit breaker pattern   |
-| xxx     | Database consistency across services                                      | Transactional writes      |
+| NFR-2.1 | Idempotent event processing                                               | Deduplication at consumer |
+| NFR-2.2 | Database consistency across services                                      | Transactional writes      |
 
-### NFR-4: Observability
+### NFR-3: Observability
 
 | ID      | Requirement                                               | Target                 |
 | ------- | --------------------------------------------------------- | ---------------------- |
-| NFR-4.1 | Structured logging for all services                       | JSON format            |
-| xxx     | Distributed tracing across service boundaries             | OpenTelemetry + Jaeger |
-| NFR-4.3 | Metrics dashboards for system health                      | Prometheus + Grafana   |
-| NFR-4.4 | Alerting on failed background tasks and error rate spikes | Grafana alerting       |
+| NFR-3.1 | Structured logging for all services                       | JSON format          |
+| NFR-3.2 | Metrics dashboards for system health                      | Prometheus + Grafana |
 
-### NFR-5: Security
+### NFR-4: Security
 
 | ID      | Requirement                                | Target                |
 | ------- | ------------------------------------------ | --------------------- |
-| NFR-5.1 | All API endpoints authenticated via JWT    | HS256 at gateway      |
-| NFR-5.2 | Passwords hashed with bcrypt               | Cost factor 12        |
-| NFR-5.3 | Role-based access control on all endpoints | Gateway middleware    |
-| NFR-5.4 | No secrets in source code or logs          | Environment variables |
+| NFR-4.1 | All API endpoints authenticated via JWT    | HS256 at gateway      |
+| NFR-4.2 | Passwords hashed with bcrypt               | Cost factor 12        |
+| NFR-4.3 | No secrets in source code or logs          | Environment variables |
 
-### NFR-6: Maintainability
+### NFR-5: Maintainability
 
 | ID      | Requirement                                                   | Target                 |
 | ------- | ------------------------------------------------------------- | ---------------------- |
-| NFR-6.1 | Microservices architecture with clear boundaries              | Service per domain     |
-| NFR-6.2 | Database migrations managed via Alembic                       | Version-controlled     |
-| NFR-6.3 | Dockerized services with docker-compose for local development | Single command startup |
-| NFR-6.4 | API documentation auto-generated via FastAPI/OpenAPI          | Swagger UI per service |
+| NFR-5.1 | Microservices architecture with clear boundaries              | Service per domain     |
+| NFR-5.2 | Database migrations managed via Alembic                       | Version-controlled     |
+| NFR-5.3 | Dockerized services with docker-compose for local development | Single command startup |
+| NFR-5.4 | API documentation auto-generated via FastAPI/OpenAPI          | Swagger UI per service |
 
 ---
 
@@ -341,7 +327,7 @@ EduCorp's current system faces five core challenges:
 
 | Service                  | Port | Responsibility                                                      |
 | ------------------------ | ---- | ------------------------------------------------------------------- |
-| **API Gateway**          | 8000 | JWT auth, rate limiting, request routing, OpenTelemetry tracing     |
+| **API Gateway**          | 8000 | JWT auth, rate limiting, request routing                            |
 | **User Service**         | 8001 | Registration, login, JWT generation, user/profile CRUD              |
 | **Course Service**       | 8002 | Course CRUD, modules, materials, enrollment, progress, certificates |
 | **Notification Service** | 8005 | Email, push, in-app notifications via event consumption             |
@@ -361,7 +347,6 @@ EduCorp's current system faces five core challenges:
 | **Vector DB**       | Semantic search for RAG-based AI Q&A                             |
 | **Prometheus**      | Metrics collection                                               |
 | **Grafana**         | Metrics visualization and alerting                               |
-| **xxx**             | Distributed tracing                                              |
 | **Docker Compose**  | Local development orchestration                                  |
 
 ### Data Flow Diagram (High-Level)
@@ -406,7 +391,7 @@ Student enrolls in course
 | --------- | ------------------------------------------------------------------- | ----------------------- |
 | M1.1      | Project scaffolding: monorepo structure, Docker Compose, shared lib | NFR-6.1, NFR-6.3        |
 | M1.2      | User Service: registration, login, JWT, profiles                    | FR-2.1–FR-2.6           |
-| M1.3      | API Gateway: routing, JWT validation, rate limiting                 | FR-2.3, FR-2.4, NFR-5.1 |
+| M1.3      | API Gateway: routing, JWT validation, rate limiting                 | FR-2.3, NFR-5.1         |
 | M1.4      | Database setup: PostgreSQL, Alembic migrations                      | NFR-6.2                 |
 
 ### Phase 2: Core Course Management (Weeks 3–4)
@@ -434,7 +419,7 @@ Student enrolls in course
 | M4.1      | Kafka setup with schema registry; event schemas defined             | FR-5.7               |
 | M4.2      | Publishing pipeline: content extraction + chunking via Temporal     | FR-5.1, FR-5.5       |
 | M4.3      | Enrollment pipeline: analytics + progress + notification via events | FR-5.2, FR-5.6       |
-| M4.4      | Idempotency, retry logic, dead-letter queues                        | FR-5.3, FR-5.4       |
+| M4.4      | Idempotency and retry logic                                         | FR-5.3               |
 
 ### Phase 5: AI & Intelligent Assistant (Weeks 9–10)
 
@@ -451,16 +436,15 @@ Student enrolls in course
 | --------- | -------------------------------------------------- | -------------------- |
 | M6.1      | Analytics service: aggregated metrics APIs         | FR-6.1–FR-6.8        |
 | M6.2      | Notification service: email, in-app, push channels | FR-7.1–FR-7.4        |
-| M6.3      | Event consumption for both services from Kafka     | FR-5.6, FR-5.7       |
+| M6.3      | Event consumption for both services from Kafka     | FR-5.5, FR-5.6       |
 
 ### Phase 7: Observability & Hardening (Weeks 13–14)
 
 | Milestone | Deliverable                                       | Requirements Covered     |
 | --------- | ------------------------------------------------- | ------------------------ |
-| M7.1      | OpenTelemetry instrumentation across all services | NFR-4.1, NFR-4.2         |
-| M7.2      | Prometheus metrics + Grafana dashboards           | NFR-4.3                  |
-| M7.3      | Jaeger distributed tracing                        | NFR-4.2                  |
-| M7.4      | Load testing and performance validation           | NFR-1.1–NFR-1.4, NFR-2.1 |
+| M7.1      | Structured logging across all services            | NFR-4.1                  |
+| M7.2      | Prometheus metrics + Grafana dashboards           | NFR-4.2                  |
+| M7.3      | Load testing and performance validation           | NFR-1.1–NFR-1.4, NFR-2.1 |
 | M7.5      | End-to-end integration testing                    | All FR                   |
 
 ---
@@ -472,75 +456,43 @@ This matrix maps **business goals** → **functional requirements** → **use ca
 | Business Goal | Functional Requirements        | Use Cases        | Milestones      |
 | ------------- | ------------------------------ | ---------------- | --------------- |
 | BG-1          | FR-1.1–FR-1.7                  | UC-1             | M2.1–M2.4       |
-| BG-1          | FR-2.1–FR-2.6                  | UC-7             | M1.2–M1.3       |
-| BG-2          | FR-5.1–FR-5.8                  | UC-1, UC-2, UC-8 | M4.1–M4.4       |
+| BG-1          | FR-2.1–FR-2.5                  | UC-7             | M1.2–M1.3       |
+| BG-2          | FR-5.1–FR-5.7                  | UC-1, UC-2, UC-8 | M4.1–M4.4       |
 | BG-3          | FR-3.1–FR-3.8                  | UC-2, UC-3       | M3.1–M3.4       |
 | BG-3          | FR-6.1–FR-6.8                  | UC-6             | M6.1            |
 | BG-4          | FR-4.1–FR-4.8                  | UC-4, UC-5       | M5.1–M5.4       |
-| BG-5          | FR-4.3, FR-5.1, FR-5.2         | UC-4, UC-5       | M5.2, M4.2–M4.3 |
-| BG-6          | NFR-2.1–NFR-2.3, FR-5.5–FR-5.8 | All              | M4.1–M4.4, M7.4 |
+| BG-5          | FR-4.3, FR-5.1, FR-5.2         | UC-4, UC-5       | M5.2, M4.2–M4.3  |
+| BG-6          | FR-5.4–FR-5.6                   | All              | M4.1–M4.4, M7.3 |
 
 ### Requirement Coverage Summary
 
 | Category                     | Total Requirements | Must Have | Should Have |
 | ---------------------------- | ------------------ | --------- | ----------- |
 | Course & Content (FR-1)      | 7                  | 7         | 0           |
-| User Management (FR-2)       | 6                  | 5         | 1           |
+| User Management (FR-2)       | 5                  | 4         | 1           |
 | Enrollment & Progress (FR-3) | 8                  | 6         | 2           |
 | AI Assistant (FR-4)          | 8                  | 5         | 3           |
-| Event Processing (FR-5)      | 8                  | 7         | 1           |
+| Event Processing (FR-5)      | 6                  | 6         | 0           |
 | Analytics (FR-6)             | 8                  | 5         | 3           |
 | Notifications (FR-7)         | 4                  | 2         | 2           |
-| **Total**                    | **49**             | **37**    | **12**      |
+| **Total**                    | **44**             | **33**    | **11**      |
 
 ---
 
-## 11. Risks & Mitigations
-
-| #   | Risk                                                     | Probability | Impact | Mitigation                                                               |
-| --- | -------------------------------------------------------- | ----------- | ------ | ------------------------------------------------------------------------ |
-| R1  | Kafka/Temporal complexity delays event-driven milestones | High        | High   | Start with simpler Celery tasks; migrate to Kafka/Temporal incrementally |
-| R2  | Vector DB performance degrades with large course corpus  | Medium      | Medium | Benchmark early; implement chunking strategy with size limits            |
-| R3  | AI service latency impacts user experience               | Medium      | High   | Streaming responses (SSE); circuit breaker for fallback                  |
-| R4  | Data inconsistency between services                      | Medium      | High   | Event sourcing patterns; idempotent consumers; integration tests         |
-| R5  | Scope creep from "should have" features                  | High        | Medium | Strict milestone gating; defer "should have" to post-MVP                 |
-| R6  | Single developer bottleneck                              | High        | High   | Prioritize "must have" requirements; reuse shared libraries              |
-
----
-
-## 12. Success Metrics
-
-| Metric                              | Target                         | Measurement Method          |
-| ----------------------------------- | ------------------------------ | --------------------------- |
-| All "Must Have" FRs implemented     | 37/37                          | Checklist review            |
-| API p95 latency (CRUD)              | < 300ms                        | Prometheus/Grafana          |
-| Content publishing pipeline success | > 99%                          | Temporal workflow dashboard |
-| Enrollment pipeline end-to-end time | < 5 seconds                    | Jaeger traces               |
-| AI Q&A time-to-first-token          | < 2 seconds                    | Application metrics         |
-| Zero data loss on service restart   | 0 events lost                  | Integration test suite      |
-| Test coverage                       | > 80% for critical paths       | pytest-cov                  |
-| All services containerized          | 6/6 services in docker-compose | docker-compose up succeeds  |
-
----
-
-## 13. Glossary
+## 11. Glossary
 
 | Term                  | Definition                                                                             |
 | --------------------- | -------------------------------------------------------------------------------------- |
 | **RAG**               | Retrieval-Augmented Generation — AI pattern combining search with LLM generation       |
 | **Idempotent**        | An operation that produces the same result regardless of how many times it is executed |
-| **Backpressure**      | Mechanism to slow down producers when consumers cannot keep up                         |
-| **Dead-Letter Queue** | Queue for messages that cannot be processed after all retry attempts                   |
-| **Circuit Breaker**   | Pattern that prevents cascading failures by stopping calls to a failing service        |
 | **SSE**               | Server-Sent Events — HTTP-based streaming for real-time updates                        |
 | **Vector DB**         | Database optimized for storing and querying high-dimensional embeddings                |
 | **LangGraph**         | Framework for building stateful, multi-step AI agent workflows                         |
 | **JWT**               | JSON Web Token — compact, self-contained token for authentication                      |
-| **RBAC**              | Role-Based Access Control — restricting access based on user roles                     |
 
 ---
 
-## 14. References
+## 12. References
 
 | Document                      | Location                                                      |
 | ----------------------------- | ------------------------------------------------------------- |
